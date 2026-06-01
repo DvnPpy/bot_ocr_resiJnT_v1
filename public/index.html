@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard Bot Resi Offline</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg: #0f1419; --panel: #171c25; --border: #2a313d; --text: #e6edf3; --accent: #ffb454; --ok: #7fd962; --err: #ff6b6b; }
+        * { box-sizing: border-box; font-family: 'Space Grotesk', sans-serif; }
+        body { background: var(--bg); color: var(--text); padding: 20px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .card { background: var(--panel); border: 1px solid var(--border); padding: 20px; border-radius: 8px; text-align: center; }
+        .card h3 { margin: 0; color: #8b949e; font-size: 14px; }
+        .card p { margin: 10px 0 0; font-size: 28px; font-weight: bold; color: var(--accent); }
+        .main-area { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .box { background: var(--panel); border: 1px solid var(--border); padding: 20px; border-radius: 8px; }
+        .log-box { height: 400px; overflow-y: auto; background: #0a0e13; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px; margin-top: 15px; border: 1px solid var(--border); }
+        .log-entry { margin-bottom: 5px; }
+        .info { color: #5ccfe6; } .success { color: var(--ok); } .warn { color: #ffd866; } .error { color: var(--err); }
+        input[type="file"], button, input[type="text"] { padding: 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; margin-bottom: 10px; }
+        button { background: var(--accent); color: #000; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { filter: brightness(1.1); }
+        .failed-item { display: flex; gap: 10px; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border); }
+        .failed-item img { width: 100px; height: 100px; object-fit: cover; border-radius: 5px; border: 1px solid var(--err); }
+    </style>
+</head>
+<body>
+    <h1>📦 J&T Resi Bot - Offline System</h1>
+    
+    <div class="grid">
+        <div class="card"><h3>Antrean Queue</h3><p id="st-queue">0</p></div>
+        <div class="card"><h3>Sedang Diproses</h3><p id="st-active" class="info">0</p></div>
+        <div class="card"><h3>Total Sukses</h3><p id="st-success" class="success">0</p></div>
+        <div class="card"><h3>Gagal / Manual</h3><p id="st-failed" class="error">0</p></div>
+    </div>
+
+    <div class="main-area">
+        <div class="box">
+            <h2>Kontrol Panel</h2>
+            <input type="file" id="fileInput" multiple accept="image/*">
+            <button onclick="uploadFiles()">Unggah Foto (Massal)</button>
+            <button onclick="exportExcel()" style="background: var(--ok); margin-top: 20px;">Download Excel Manifest</button>
+            
+            <div id="downloadLinks" style="margin-top:10px;"></div>
+
+            <h3 style="margin-top: 30px;">Tinjauan Manual (Gagal)</h3>
+            <div id="failedList" style="max-height: 250px; overflow-y: auto;">
+                </div>
+        </div>
+
+        <div class="box">
+            <h2>Activity Log</h2>
+            <div class="log-box" id="logBox"></div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const logBox = document.getElementById('logBox');
+
+        socket.on('log', data => {
+            logBox.innerHTML += `<div class="log-entry ${data.type}">[${new Date().toLocaleTimeString()}] ${data.msg}</div>`;
+            logBox.scrollTop = logBox.scrollHeight;
+        });
+
+        socket.on('stats', s => {
+            document.getElementById('st-queue').innerText = s.queue;
+            document.getElementById('st-active').innerText = s.active;
+            document.getElementById('st-success').innerText = s.success;
+            document.getElementById('st-failed').innerText = s.failed;
+        });
+
+        socket.on('new_failed', data => {
+            const list = document.getElementById('failedList');
+            const id = 'fail_' + data.filename.replace(/[^a-zA-Z0-9]/g, '');
+            list.innerHTML += `
+                <div class="failed-item" id="${id}">
+                    <a href="/gagal/${data.filename}" target="_blank">
+                        <img src="/gagal/${data.filename}" alt="Gagal">
+                    </a>
+                    <div style="flex:1;">
+                        <span style="font-size:12px; color:gray;">${data.filename}</span>
+                        <input type="text" id="input_${id}" placeholder="Ketik Resi (Gunakan koma jika > 1)">
+                        <button onclick="submitManual('${data.filename}', '${id}')" style="padding: 6px;">Simpan</button>
+                    </div>
+                </div>`;
+        });
+
+        async function uploadFiles() {
+            const files = document.getElementById('fileInput').files;
+            if (files.length === 0) return alert('Pilih file dulu!');
+            
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) formData.append('photos', files[i]);
+            
+            await fetch('/api/upload', { method: 'POST', body: formData });
+            document.getElementById('fileInput').value = '';
+        }
+
+        async function submitManual(filename, elementId) {
+            const inputVal = document.getElementById(`input_${elementId}`).value;
+            if (!inputVal) return alert('Nomor resi tidak boleh kosong!');
+
+            const res = await fetch('/api/override', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ filename, resiString: inputVal })
+            });
+            
+            if (res.ok) document.getElementById(elementId).remove();
+        }
+
+        async function exportExcel() {
+            const res = await fetch('/api/export');
+            if(!res.ok) return alert('Belum ada data sukses / gagal ekspor.');
+            const data = await res.json();
+            
+            let html = '<div style="color:#7fd962; font-size:13px; margin-bottom:5px;">File siap didownload (cek folder manifests/):</div>';
+            data.files.forEach(f => html += `<div>- ${f}</div>`);
+            document.getElementById('downloadLinks').innerHTML = html;
+        }
+    </script>
+</body>
+</html>
