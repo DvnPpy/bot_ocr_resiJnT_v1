@@ -5,6 +5,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const exceljs = require('exceljs');
+const sharp = require('sharp'); // Tambahan modul untuk kompresi gambar
 const { extractResiOffline } = require('./ocrEngine');
 
 const app = express();
@@ -33,15 +34,20 @@ let sessionFiles = new Set(); // Lapis 1: Cek nama file asli
 let successData = []; // Data untuk Excel
 let queue = [];
 let activeTask = 0;
-const MAX_CONCURRENT = 2; // Proses 2 foto sekaligus
+const MAX_CONCURRENT = 4; // UPDATE: Proses 4 foto sekaligus
 
-// Helper Waktu & Folder Harian
+// Helper Waktu & Folder Harian (UPDATE: Masuk ke dalam folder pod_storage)
 const getDailyFolder = () => {
+    const STORAGE_DIR = './pod_storage';
+    if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true });
+
     const d = new Date();
     const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
-    const folder = `POD_${String(d.getDate()).padStart(2, '0')}_${bulan[d.getMonth()]}_${d.getFullYear()}`;
-    if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
-    return folder;
+    const folderName = `POD_${String(d.getDate()).padStart(2, '0')}_${bulan[d.getMonth()]}_${d.getFullYear()}`;
+    const folderPath = path.join(STORAGE_DIR, folderName);
+
+    if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
+    return folderPath;
 };
 
 // Emit status ke Frontend
@@ -72,18 +78,30 @@ const processQueue = async () => {
         const dailyFolder = getDailyFolder();
 
         if (result.success) {
-            result.resis.forEach(resi => {
+            // Gunakan Promise.all karena sharp bersifat asynchronous
+            await Promise.all(result.resis.map(async (resi) => {
                 const targetPath = path.join(dailyFolder, `${resi}.jpg`);
-                // Copy file ke nama resi (Lapis 2: Otomatis Overwrite jika sudah ada)
+                
                 if (fs.existsSync(task.path)) {
-                    fs.copyFileSync(task.path, targetPath);
+                    const fileSizeMB = fs.statSync(task.path).size / (1024 * 1024);
+                    
+                    // UPDATE: Logika Kompresi Maksimal 2MB
+                    if (fileSizeMB > 2) {
+                        await sharp(task.path)
+                            .jpeg({ quality: 85, mozjpeg: true }) // Kompresi cerdas kualitas tinggi
+                            .toFile(targetPath);
+                    } else {
+                        // Jika sudah di bawah 2MB, copy langsung (100% Lossless)
+                        fs.copyFileSync(task.path, targetPath);
+                    }
                 }
                 
                 // Cek apakah resi sudah ada di data Excel, jika belum tambahkan
                 if (!successData.some(d => d.resi === resi)) {
                     successData.push({ original: task.originalName, resi, info: `Skenario ${result.scenario}` });
                 }
-            });
+            }));
+
             io.emit('log', { type: 'success', msg: `✅ Sukses: ${task.originalName} -> ${result.resis.join(', ')}` });
             
             // Hapus file temp dengan aman
@@ -100,14 +118,13 @@ const processQueue = async () => {
     } catch (err) {
         io.emit('log', { type: 'error', msg: `🚨 Error sistem pada file ${task.originalName}` });
         
-        // BUG FIX: Pindahkan file yang menyebabkan error ke GAGAL agar tidak stuck di temp
         if (fs.existsSync(task.path)) {
             try {
                 const targetPath = path.join(GAGAL_DIR, `ERROR_${task.originalName}`);
                 fs.renameSync(task.path, targetPath);
                 io.emit('new_failed', { filename: `ERROR_${task.originalName}` });
             } catch (e) {
-                // Abaikan jika gagal memindahkan (misal file terkunci)
+                // Abaikan jika gagal memindahkan
             }
         }
     } finally {
@@ -121,23 +138,26 @@ app.post('/api/upload', upload.array('photos'), (req, res) => {
     let duplicateCount = 0;
     
     req.files.forEach(file => {
-        // Lapis 1 Anti-Duplikat: Cek nama asli file
         if (sessionFiles.has(file.originalname)) {
             duplicateCount++;
             io.emit('log', { type: 'warn', msg: `⚠️ File ${file.originalname} diabaikan (Duplikasi)` });
-            if (fs.existsSync(file.path)) fs.unlinkSync(file.path); // Hapus dari temp
+            if (fs.existsSync(file.path)) fs.unlinkSync(file.path); 
         } else {
             sessionFiles.add(file.originalname);
             queue.push({ path: file.path, originalName: file.originalname });
         }
     });
 
-    processQueue();
+    // Panggil processQueue sebanyak sisa slot kosong untuk mempercepat start
+    for (let i = activeTask; i < MAX_CONCURRENT; i++) {
+        processQueue();
+    }
+    
     res.json({ ok: true, queued: req.files.length - duplicateCount, duplicate: duplicateCount });
 });
 
 // API: Manual Override
-app.post('/api/override', (req, res) => {
+app.post('/api/override', async (req, res) => { // UPDATE: Ubah jadi async function
     const { filename, resiString } = req.body;
     const resiArray = resiString.split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
     
@@ -146,20 +166,25 @@ app.post('/api/override', (req, res) => {
 
     const dailyFolder = getDailyFolder();
     
-    // Gandakan file untuk setiap resi (Pemisah Koma)
-    resiArray.forEach(resi => {
+    // Gandakan file dan kompres jika diperlukan (Pemisah Koma)
+    await Promise.all(resiArray.map(async (resi) => {
         const targetPath = path.join(dailyFolder, `${resi}.jpg`);
-        fs.copyFileSync(sourcePath, targetPath);
+        const fileSizeMB = fs.statSync(sourcePath).size / (1024 * 1024);
+
+        if (fileSizeMB > 2) {
+            await sharp(sourcePath).jpeg({ quality: 85, mozjpeg: true }).toFile(targetPath);
+        } else {
+            fs.copyFileSync(sourcePath, targetPath);
+        }
         
         if (!successData.some(d => d.resi === resi)) {
             successData.push({ original: filename, resi, info: 'Manual Override' });
         }
-    });
+    }));
 
     io.emit('log', { type: 'success', msg: `🛠️ Manual Selesai: ${filename} -> ${resiArray.join(', ')}` });
     updateDashboard();
     res.json({ ok: true });
-    // Note: File asli dibiarkan di POD_GAGAL sesuai permintaan
 });
 
 // API: Export Excel per 900 AWB
