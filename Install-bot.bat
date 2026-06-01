@@ -1,10 +1,10 @@
 @echo off
-title Setup Bot J^&T Offline V2
+title Setup Bot J^&T Offline 
 cd /d "%~dp0"
 color 0A
 
 echo ===================================================
-echo    SISTEM AUTO-SETUP BOT RESI J^&T OFFLINE V2
+echo    SISTEM AUTO-SETUP BOT RESI J^&T OFFLINE 
 echo ===================================================
 echo.
 echo [DETAIL] Memulai setup untuk repositori baru...
