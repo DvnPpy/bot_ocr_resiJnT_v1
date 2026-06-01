@@ -1,4 +1,7 @@
-# 📦 Bot OCR Resi J&T Offline V1
+Berikut adalah rancangan detail untuk file `README.md` yang bisa langsung kamu gunakan untuk repositori GitHub barumu. Isinya sudah disesuaikan secara khusus dengan arsitektur *offline*, skenario 5 lapis, fitur *override* resi ganda, dan pembagian manifest per 900 AWB.
+
+```markdown
+# 📦 Bot OCR Resi J&T Offline V2
 
 Sistem pembaca teks resi (AWB) J&T Express **100% Offline** menggunakan Node.js dan Tesseract.js. Dirancang untuk memproses ribuan foto resi secara massal, efisien, dan cepat melalui Dashboard GUI lokal tanpa batasan *rate limit* API.
 
@@ -32,58 +35,66 @@ bot_ocr_resiJnT_v1/
     ├── manifests/          # Tempat file Excel (.xlsx) disimpan
     ├── temp_uploads/       # Antrean sementara sebelum diproses
     ├── POD_GAGAL/          # Karantina foto yang gagal terbaca
-    └── POD_DD_Bln_YYYY/    # Folder hasil sukses (nama diganti ke No. Resi)  
+    └── POD_DD_Bln_YYYY/    # Folder hasil sukses (nama diganti ke No. Resi)
+
 ```
 
-🚀 Cara Instalasi
-Prasyarat:
-Pastikan kamu sudah menginstal Node.js di komputermu. Jika belum, unduh dan instal dari nodejs.org.
+---
 
-Langkah-langkah:
-Unduh atau Clone repositori ini.
+## 🚀 Cara Instalasi
 
-Klik ganda pada file Install-bot.bat. Skrip ini akan secara otomatis:
+### Prasyarat:
 
-Mengunduh dan memasang Git (jika belum ada).
+Pastikan kamu sudah menginstal **Node.js** di komputermu. Jika belum, unduh dan instal dari [nodejs.org](https://nodejs.org/).
 
-Menghubungkan direktori ke repositori GitHub.
+### Langkah-langkah:
 
-Memasang semua mesin OCR dan dependensi lokal (npm install).
+1. Unduh atau *Clone* repositori ini.
+2. Klik ganda pada file `Install-bot.bat`. Skrip ini akan secara otomatis:
+* Mengunduh dan memasang Git (jika belum ada).
+* Menghubungkan direktori ke repositori GitHub.
+* Memasang semua mesin OCR dan dependensi lokal (`npm install`).
 
-Tunggu hingga terminal menunjukkan pesan "Setup Selesai!".
 
-💻 Cara Menjalankan Bot
-Klik ganda pada file start-bot.bat.
+3. Tunggu hingga terminal menunjukkan pesan "Setup Selesai!".
 
-Skrip akan mengecek pembaruan (update) di GitHub terlebih dahulu:
+---
 
-Jika ada update: Akan terunduh otomatis dan sistem akan memintamu menjalankan ulang start-bot.bat.
+## 💻 Cara Menjalankan Bot
 
-Jika tidak ada update (atau sedang offline): Bot akan langsung menyalakan server lokal.
+1. Klik ganda pada file `start-bot.bat`.
+2. Skrip akan mengecek pembaruan (update) di GitHub terlebih dahulu:
+* **Jika ada update:** Akan terunduh otomatis dan sistem akan memintamu menjalankan ulang `start-bot.bat`.
+* **Jika tidak ada update (atau sedang offline):** Bot akan langsung menyalakan server lokal.
 
-Buka browser (Chrome/Edge/Firefox) dan akses:
-👉 http://localhost:31912
 
-📖 Panduan Penggunaan Dashboard
-Upload Massal: Klik "Pilih File" pada Dashboard, blok/pilih ratusan foto resi J&T sekaligus dari komputermu, lalu klik "Unggah Foto (Massal)".
+3. Buka browser (Chrome/Edge/Firefox) dan akses:
+👉 **`http://localhost:31912`**
 
-Pantau Proses: Perhatikan indikator antrean (Queue) dan Activity Log di sisi kanan untuk melihat status real-time foto yang sedang dianalisis.
+---
 
-Tinjauan Manual (Gagal): Gulir ke bawah pada panel Kontrol. Jika ada foto yang gagal diekstrak, foto akan muncul di sana. Ketik nomor resinya dan klik Simpan.
+## 📖 Panduan Penggunaan Dashboard
 
-Ekspor Data: Jika semua antrean sudah selesai, klik tombol hijau "Download Excel Manifest". File .xlsx akan langsung masuk ke folder manifests/ di dalam direktori bot.
+1. **Upload Massal:** Klik **"Pilih File"** pada Dashboard, blok/pilih ratusan foto resi J&T sekaligus dari komputermu, lalu klik **"Unggah Foto (Massal)"**.
+2. **Pantau Proses:** Perhatikan indikator antrean (Queue) dan Activity Log di sisi kanan untuk melihat status *real-time* foto yang sedang dianalisis.
+3. **Tinjauan Manual (Gagal):** Gulir ke bawah pada panel *Kontrol*. Jika ada foto yang gagal diekstrak, foto akan muncul di sana. Ketik nomor resinya dan klik **Simpan**.
+4. **Ekspor Data:** Jika semua antrean sudah selesai, klik tombol hijau **"Download Excel Manifest"**. File `.xlsx` akan langsung masuk ke folder `manifests/` di dalam direktori bot.
 
-🛠️ Stack Teknologi
-Node.js & Express (Local Web Server)
+---
 
-Tesseract.js (Offline Optical Character Recognition)
+## 🛠️ Stack Teknologi
 
-Sharp (Image Processing & Kompresi)
+* **Node.js** & **Express** (Local Web Server)
+* **Tesseract.js** (Offline Optical Character Recognition)
+* **Sharp** (Image Processing & Kompresi)
+* **Multer** (Penanganan Upload Massal)
+* **ExcelJS** (Manipulasi Spreadsheet otomatis)
+* **Socket.io** (WebSockets untuk log *real-time*)
 
-Multer (Penanganan Upload Massal)
+---
 
-ExcelJS (Manipulasi Spreadsheet otomatis)
+**Developed by delfin** · Offline Logistics Automation System
 
-Socket.io (WebSockets untuk log real-time)
+```
 
-Developed by delfin · Offline Logistics Automation System
+```
