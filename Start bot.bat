@@ -50,12 +50,17 @@ if %count% gtr 0 (
 
 :start_bot
 echo.
+echo [>] Membuka Dashboard di Browser otomatis...
+start http://localhost:31912
+
 echo [>] Memulai aplikasi pada http://localhost:31912 ...
+echo [i] Jika terjadi error/crash, log akan disimpan di "error_log.txt"
 echo.
 
-:: Jalankan core bot utama
-node index.js
+:: Jalankan core bot utama dan simpan log error ke file teks
+node index.js 2>> error_log.txt
 
 echo.
-echo [!] Bot telah berhenti berjalan secara aman.
+echo [!] Bot telah berhenti berjalan secara aman atau terjadi crash.
+echo [i] Silakan buka file "error_log.txt" di dalam folder ini untuk melihat detail error-nya.
 pause
