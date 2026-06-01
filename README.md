@@ -1,7 +1,4 @@
-Berikut adalah rancangan detail untuk file `README.md` yang bisa langsung kamu gunakan untuk repositori GitHub barumu. Isinya sudah disesuaikan secara khusus dengan arsitektur *offline*, skenario 5 lapis, fitur *override* resi ganda, dan pembagian manifest per 900 AWB.
-
-```markdown
-# 📦 Bot OCR Resi J&T Offline V2
+# 📦 Bot OCR Resi J&T Offline V1
 
 Sistem pembaca teks resi (AWB) J&T Express **100% Offline** menggunakan Node.js dan Tesseract.js. Dirancang untuk memproses ribuan foto resi secara massal, efisien, dan cepat melalui Dashboard GUI lokal tanpa batasan *rate limit* API.
 
@@ -94,7 +91,3 @@ Pastikan kamu sudah menginstal **Node.js** di komputermu. Jika belum, unduh dan 
 ---
 
 **Developed by delfin** · Offline Logistics Automation System
-
-```
-
-```
