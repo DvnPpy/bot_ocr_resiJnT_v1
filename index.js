@@ -75,7 +75,9 @@ const processQueue = async () => {
             result.resis.forEach(resi => {
                 const targetPath = path.join(dailyFolder, `${resi}.jpg`);
                 // Copy file ke nama resi (Lapis 2: Otomatis Overwrite jika sudah ada)
-                fs.copyFileSync(task.path, targetPath);
+                if (fs.existsSync(task.path)) {
+                    fs.copyFileSync(task.path, targetPath);
+                }
                 
                 // Cek apakah resi sudah ada di data Excel, jika belum tambahkan
                 if (!successData.some(d => d.resi === resi)) {
@@ -83,19 +85,34 @@ const processQueue = async () => {
                 }
             });
             io.emit('log', { type: 'success', msg: `✅ Sukses: ${task.originalName} -> ${result.resis.join(', ')}` });
-            fs.unlinkSync(task.path); // Hapus file temp
+            
+            // Hapus file temp dengan aman
+            if (fs.existsSync(task.path)) fs.unlinkSync(task.path); 
         } else {
-            // Pindah ke folder GAGAL
-            const targetPath = path.join(GAGAL_DIR, task.originalName);
-            fs.renameSync(task.path, targetPath);
+            // Pindah ke folder GAGAL dengan aman
+            if (fs.existsSync(task.path)) {
+                const targetPath = path.join(GAGAL_DIR, task.originalName);
+                fs.renameSync(task.path, targetPath);
+            }
             io.emit('log', { type: 'error', msg: `❌ Gagal baca: ${task.originalName}` });
             io.emit('new_failed', { filename: task.originalName });
         }
     } catch (err) {
         io.emit('log', { type: 'error', msg: `🚨 Error sistem pada file ${task.originalName}` });
+        
+        // BUG FIX: Pindahkan file yang menyebabkan error ke GAGAL agar tidak stuck di temp
+        if (fs.existsSync(task.path)) {
+            try {
+                const targetPath = path.join(GAGAL_DIR, `ERROR_${task.originalName}`);
+                fs.renameSync(task.path, targetPath);
+                io.emit('new_failed', { filename: `ERROR_${task.originalName}` });
+            } catch (e) {
+                // Abaikan jika gagal memindahkan (misal file terkunci)
+            }
+        }
     } finally {
         activeTask--;
-        processQueue();
+        processQueue(); // Panggil antrean berikutnya
     }
 };
 
@@ -108,7 +125,7 @@ app.post('/api/upload', upload.array('photos'), (req, res) => {
         if (sessionFiles.has(file.originalname)) {
             duplicateCount++;
             io.emit('log', { type: 'warn', msg: `⚠️ File ${file.originalname} diabaikan (Duplikasi)` });
-            fs.unlinkSync(file.path); // Hapus dari temp
+            if (fs.existsSync(file.path)) fs.unlinkSync(file.path); // Hapus dari temp
         } else {
             sessionFiles.add(file.originalname);
             queue.push({ path: file.path, originalName: file.originalname });
