@@ -34,7 +34,7 @@ let sessionFiles = new Set(); // Lapis 1: Cek nama file asli
 let successData = []; // Data untuk Excel
 let queue = [];
 let activeTask = 0;
-const MAX_CONCURRENT = 2; // UPDATE: Proses 2 foto sekaligus
+const MAX_CONCURRENT = 5; // UPDATE: Proses 5 foto sekaligus
 
 // Helper Waktu & Folder Harian (UPDATE: Masuk ke dalam folder pod_storage)
 const getDailyFolder = () => {
