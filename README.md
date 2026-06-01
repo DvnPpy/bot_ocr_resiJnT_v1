@@ -33,6 +33,7 @@ bot_ocr_resiJnT_v1/
     ├── temp_uploads/       # Antrean sementara sebelum diproses
     ├── POD_GAGAL/          # Karantina foto yang gagal terbaca
     └── POD_DD_Bln_YYYY/    # Folder hasil sukses (nama diganti ke No. Resi)  
+```
 
 🚀 Cara Instalasi
 Prasyarat:
