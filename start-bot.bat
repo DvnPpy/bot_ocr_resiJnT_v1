@@ -22,37 +22,36 @@ if not exist "node_modules\" (
 echo [>] Memeriksa pembaruan di GitHub...
 git fetch origin main >nul 2>&1
 
-if %errorlevel% equ 0 (
-    :: Hitung jumlah commit yang tertinggal
-    FOR /F "tokens=*" %%g IN ('git rev-list HEAD...origin/main --count 2^>nul') DO SET count=%%g
-    
-    if defined count (
-        if %count% gtr 0 (
-            color 0E
-            echo.
-            echo ===================================================
-            echo [🚀 UPDATE] Ditemukan %count% pembaruan baru di GitHub!
-            echo [>] Mengunduh dan memperbarui data bot...
-            echo ===================================================
-            git reset --hard origin/main
-            echo.
-            echo [V] Berhasil memperbarui data ke versi terbaru!
-            echo [!] PERHATIAN: Bot perlu dijalankan ulang untuk menerapkan perubahan.
-            echo [>] Silakan tutup jendela ini dan buka kembali "start-bot.bat".
-            echo ===================================================
-            pause
-            exit /b
-        ) else (
-            echo [V] Bot sudah menggunakan versi terbaru (Up-to-date).
-        )
-    ) else (
-        echo [!] Gagal menghitung perbedaan versi, melewati pengecekan...
-    )
-) else (
-    echo [⚠️] Gagal terhubung ke GitHub (Offline / Internet terputus).
+if %errorlevel% neq 0 (
+    echo [!] Gagal terhubung ke GitHub (Offline / Internet terputus).
     echo [>] Melanjutkan menjalankan bot dengan versi lokal yang tersedia...
+    goto :start_bot
 )
 
+:: Hitung jumlah commit yang tertinggal
+set count=0
+FOR /F "tokens=*" %%g IN ('git rev-list HEAD...origin/main --count 2^>nul') DO SET count=%%g
+
+if %count% gtr 0 (
+    color 0E
+    echo.
+    echo ===================================================
+    echo [🚀 UPDATE] Ditemukan %count% pembaruan baru di GitHub!
+    echo [>] Mengunduh dan memperbarui data bot...
+    echo ===================================================
+    git reset --hard origin/main
+    echo.
+    echo [V] Berhasil memperbarui data ke versi terbaru!
+    echo [!] PERHATIAN: Bot perlu dijalankan ulang untuk menerapkan perubahan.
+    echo [>] Silakan tutup jendela ini dan buka kembali "start-bot.bat".
+    echo ===================================================
+    pause
+    exit /b
+) else (
+    echo [V] Bot sudah menggunakan versi terbaru (Up-to-date).
+)
+
+:start_bot
 echo.
 echo [>] Memulai aplikasi pada http://localhost:31912 ...
 echo.
