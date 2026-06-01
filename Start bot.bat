@@ -23,7 +23,7 @@ echo [>] Memeriksa pembaruan di GitHub...
 git fetch origin main >nul 2>&1
 
 if %errorlevel% neq 0 (
-    echo [!] Gagal terhubung ke GitHub (Offline / Internet terputus).
+    echo [!] Gagal terhubung ke GitHub [Offline - Internet terputus].
     echo [>] Melanjutkan menjalankan bot dengan versi lokal yang tersedia...
     goto :start_bot
 )
@@ -44,9 +44,8 @@ if %count% gtr 0 (
     echo [V] Berhasil memperbarui data ke versi terbaru!
     echo [>] Langsung menjalankan sistem bot terbaru...
     echo ===================================================
-    :: Kita hapus "pause" dan "exit /b" di sini agar bot langsung berjalan ke :start_bot
 ) else (
-    echo [V] Bot sudah menggunakan versi terbaru (Up-to-date).
+    echo [V] Bot sudah menggunakan versi terbaru [Up-to-date].
 )
 
 :start_bot
