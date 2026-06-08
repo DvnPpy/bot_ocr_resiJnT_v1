@@ -24,10 +24,14 @@ if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(GAGAL_DIR)) fs.mkdirSync(GAGAL_DIR, { recursive: true });
 
 // --- SISTEM DATABASE SEDERHANA ---
-let db = { sessionFiles: [], successData: [] };
+let db = { sessionFiles: [], successData: [], totalLifetimeResi: 0 }; // Tambahkan totalLifetimeResi
+
 if (fs.existsSync(DB_FILE)) {
-    db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+    const rawData = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+    // Gabungkan data lama dengan struktur baru agar tidak error
+    db = { ...db, ...rawData }; 
 }
+const saveDB = () => fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 const saveDB = () => fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 
 const storage = multer.diskStorage({
