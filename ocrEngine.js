@@ -3,38 +3,24 @@ const Tesseract = require('tesseract.js');
 
 // Fungsi 5 Lapis Manipulasi Gambar & Konfigurasi Tesseract
 const applyScenario = async (buffer, scenario) => {
-    // UPGRADE: Resolusi ditingkatkan ke 2000px agar font unik lebih jelas terbaca
     let img = sharp(buffer).resize({ width: 2000, withoutEnlargement: true });
-    
-    // Default PSM (Page Segmentation Mode)
-    let psm = Tesseract.PSM.AUTO; // Mode 3: Paragraf standar
+    let psm = Tesseract.PSM.AUTO;
 
     switch (scenario) {
-        case 1: 
-            // Skenario 1: Original Resized (Auto PSM)
-            psm = Tesseract.PSM.AUTO;
-            break;
+        case 1: psm = Tesseract.PSM.AUTO; break;
         case 2: 
-            // Skenario 2: Grayscale + Normalize
-            // Normalize meratakan warna, sangat bagus untuk screenshot miring
             img = img.grayscale().normalize();
-            // SPARSE_TEXT (Mode 11): AI mencari teks berantakan/miring di seluruh gambar
             psm = Tesseract.PSM.SPARSE_TEXT; 
             break;
         case 3: 
-            // Skenario 3: Median Filter + Sharpen
-            // Median(3) membersihkan noise/bercak di sekitar font melengkung
             img = img.grayscale().median(3).sharpen({ sigma: 2 });
             psm = Tesseract.PSM.SPARSE_TEXT;
             break;
         case 4: 
-            // Skenario 4: Binarization / Hitam Putih Murni
             img = img.grayscale().normalize().threshold(140);
             psm = Tesseract.PSM.AUTO;
             break;
         case 5: 
-            // Skenario 5: High Contrast Agresif
-            // Anggap gambar sebagai satu blok teks besar (Mode 6)
             img = img.grayscale().linear(1.5, -(128 * 0.5));
             psm = Tesseract.PSM.SINGLE_BLOCK; 
             break;
@@ -42,32 +28,52 @@ const applyScenario = async (buffer, scenario) => {
     return { buffer: await img.toBuffer(), psm };
 };
 
-// Fungsi Ekstraksi Resi
+// Fungsi Ekstraksi Resi dengan Auto-Correct Typo
 const extractResiOffline = async (imagePath) => {
     const originalBuffer = await sharp(imagePath).toBuffer();
     
     for (let i = 1; i <= 5; i++) {
         try {
-            // Ambil buffer gambar dan mode PSM yang direkomendasikan skenario
             const { buffer, psm } = await applyScenario(originalBuffer, i);
-            
-            // Masukkan mode PSM ke Tesseract
             const { data: { text } } = await Tesseract.recognize(buffer, 'eng', {
                 tessedit_pageseg_mode: psm
             });
             
-            // Hapus semua spasi, enter (\n), titik, koma, dan strip
-            // Ini mencegah resi terputus/patah karena enter atau spasi tak sengaja
-            const cleanText = text.replace(/[\r\n\s\-\,\.]+/g, '');
+            // 1. HAPUS SEMUA SIMBOL: Buang kurung 【 】, koma, spasi. Tinggalkan hanya A-Z dan 0-9
+            const cleanText = text.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
             
-            // Regex tetap dipertahankan sesuai permintaan: JX, JO, JD, JZ, atau 13
-            const RESI_REGEX = /(J[XODZ][0-9]{8,15}|13[0-9]{10,15})/gi;
-            const matches = cleanText.match(RESI_REGEX);
+            // 2. REGEX FLEKSIBEL: Awalan (JX/JO/JD/JZ/13) diikuti oleh Angka & Huruf Typo OCR (S, O, I, L, dll)
+            const RESI_REGEX = /(J[XODZ]|13)([0-9OSILZBGTQAC]{8,15})/g;
             
-            if (matches && matches.length > 0) {
+            let matches = [];
+            let match;
+            
+            // Looping untuk mencari semua kemungkinan resi di dalam teks
+            while ((match = RESI_REGEX.exec(cleanText)) !== null) {
+                let prefix = match[1];
+                let body = match[2];
+                
+                // 3. AUTO-KOREKSI FONT MELENGKUNG
+                body = body.replace(/[OQDC]/g, '0')
+                           .replace(/[IL]/g, '1')
+                           .replace(/[Z]/g, '2')
+                           .replace(/[A]/g, '4')
+                           .replace(/[S]/g, '5')
+                           .replace(/[G]/g, '6')
+                           .replace(/[T]/g, '7')
+                           .replace(/[B]/g, '8');
+                
+                // 4. VALIDASI FINAL: Pastikan setelah dikoreksi, body benar-benar murni angka
+                if (/^[0-9]{8,15}$/.test(body)) {
+                    matches.push(prefix + body);
+                }
+            }
+            
+            // Jika resi berhasil ditemukan, kembalikan datanya (hapus duplikat dengan Set)
+            if (matches.length > 0) {
                 return {
                     success: true,
-                    resis: [...new Set(matches.map(m => m.toUpperCase()))],
+                    resis: [...new Set(matches)],
                     scenario: i
                 };
             }
@@ -76,6 +82,7 @@ const extractResiOffline = async (imagePath) => {
         }
     }
     
+    // Jika semua 5 skenario gagal
     return { success: false, resis: [], scenario: 5 };
 };
 
