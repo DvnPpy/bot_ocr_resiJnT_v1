@@ -5,7 +5,7 @@
     <title>Dashboard Bot Resi Offline</title>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #0f1419; --panel: #171c25; --border: #2a313d; --text: #e6edf3; --accent: #ffb454; --ok: #7fd962; --err: #ff6b6b; }
+        :root { --bg: #0f1419; --panel: #171c25; --border: #2a313d; --text: #e6edf3; --accent: #ffb454; --ok: #7fd962; --err: #ff6b6b; --warn: #ffd866;}
         * { box-sizing: border-box; font-family: 'Space Grotesk', sans-serif; }
         body { background: var(--bg); color: var(--text); padding: 20px; }
         .grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px; }
@@ -14,18 +14,32 @@
         .card p { margin: 10px 0 0; font-size: 28px; font-weight: bold; color: var(--accent); }
         .main-area { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .box { background: var(--panel); border: 1px solid var(--border); padding: 20px; border-radius: 8px; }
-        .log-box { height: 400px; overflow-y: auto; background: #0a0e13; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px; margin-top: 15px; border: 1px solid var(--border); }
-        .log-entry { margin-bottom: 5px; }
-        .info { color: #5ccfe6; } .success { color: var(--ok); } .warn { color: #ffd866; } .error { color: var(--err); }
-        input[type="file"], button, input[type="text"] { padding: 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; margin-bottom: 10px; }
-        button { background: var(--accent); color: #000; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        
+        /* Progress Bar */
+        .progress-bg { width: 100%; background: var(--border); border-radius: 5px; margin-bottom: 15px; overflow: hidden; display: none; }
+        .progress-bar { height: 10px; background: var(--accent); width: 0%; transition: width 0.3s; }
+        
+        .log-box { height: 350px; overflow-y: auto; background: #0a0e13; padding: 10px; border-radius: 6px; font-size: 13px; border: 1px solid var(--border); }
+        .info { color: #5ccfe6; } .success { color: var(--ok); } .warn { color: var(--warn); } .error { color: var(--err); }
+        
+        input, select, button { padding: 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; margin-bottom: 10px; }
+        button { font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:hover { filter: brightness(1.1); }
+        .btn-primary { background: var(--accent); color: #000; }
+        .btn-danger { background: var(--err); color: #000; }
+        .btn-warn { background: var(--warn); color: #000; }
+        .btn-success { background: var(--ok); color: #000; }
+        
+        .setup-box { border: 2px dashed var(--warn); padding: 15px; margin-bottom: 15px; border-radius: 8px; }
+        .disabled-area { opacity: 0.5; pointer-events: none; }
+        
         .failed-item { display: flex; gap: 10px; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border); }
-        .failed-item img { width: 100px; height: 100px; object-fit: cover; border-radius: 5px; border: 1px solid var(--err); }
+        .failed-item img { width: 80px; height: 80px; object-fit: cover; border-radius: 5px; }
+        .btn-group { display: flex; gap: 5px; margin-top: 5px; }
     </style>
 </head>
 <body>
-    <h1>📦 J&T Resi Bot - Offline System</h1>
+    <h1>📦 J&T Resi Bot - Advanced Offline</h1>
     
     <div class="grid">
         <div class="card"><h3>Antrean Queue</h3><p id="st-queue">0</p></div>
@@ -36,16 +50,39 @@
 
     <div class="main-area">
         <div class="box">
-            <h2>Kontrol Panel</h2>
-            <input type="file" id="fileInput" multiple accept="image/*">
-            <button onclick="uploadFiles()">Unggah Foto (Massal)</button>
-            <button onclick="exportExcel()" style="background: var(--ok); margin-top: 20px;">Download Excel Manifest</button>
-            
-            <div id="downloadLinks" style="margin-top:10px;"></div>
+            <div class="setup-box" id="setupBox">
+                <h3>⚙️ Pengaturan Awal (Wajib)</h3>
+                <label>Pilih Jumlah Proses Bersamaan (Max 10):</label>
+                <select id="concurrentSelect">
+                    <option value="" disabled selected>-- Pilih Kecepatan Proses --</option>
+                    <option value="1">1 Foto (Sangat Ringan)</option>
+                    <option value="3">3 Foto (Aman)</option>
+                    <option value="5">5 Foto (Cepat)</option>
+                    <option value="10">10 Foto (Maksimal - Butuh CPU Tinggi)</option>
+                </select>
+                <button class="btn-warn" onclick="lockSetup()">Kunci & Aktifkan Bot</button>
+            </div>
 
-            <h3 style="margin-top: 30px;">Tinjauan Manual (Gagal)</h3>
-            <div id="failedList" style="max-height: 250px; overflow-y: auto;">
+            <div id="uploadArea" class="disabled-area">
+                <input type="file" id="fileInput" multiple accept="image/*">
+                <button class="btn-primary" onclick="uploadFiles()">Unggah Foto (Massal)</button>
+                
+                <div class="progress-bg" id="progressBg">
+                    <div class="progress-bar" id="progressBar"></div>
                 </div>
+
+                <div class="btn-group">
+                    <button class="btn-danger" onclick="apiAction('/api/cancel-queue')">Batalkan Antrean</button>
+                    <button class="btn-warn" onclick="apiAction('/api/clear-memory')">Hapus Ingatan File</button>
+                    <button class="btn-danger" onclick="apiAction('/api/reset-stats')">Reset Statistik</button>
+                </div>
+                
+                <button class="btn-success" onclick="exportExcel()" style="margin-top: 10px;">Download Excel Manifest</button>
+                <div id="downloadLinks" style="margin-top:10px; font-size:12px;"></div>
+            </div>
+
+            <h3 style="margin-top: 20px;">Tinjauan Manual (Gagal)</h3>
+            <div id="failedList" style="max-height: 250px; overflow-y: auto;"></div>
         </div>
 
         <div class="box">
@@ -58,9 +95,30 @@
     <script>
         const socket = io();
         const logBox = document.getElementById('logBox');
+        let totalQueue = 0;
+
+        function lockSetup() {
+            const val = document.getElementById('concurrentSelect').value;
+            if(!val) return alert('Pilih jumlah proses dulu!');
+            
+            fetch('/api/set-concurrent', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ max: parseInt(val) })
+            }).then(() => {
+                document.getElementById('setupBox').style.display = 'none';
+                document.getElementById('uploadArea').classList.remove('disabled-area');
+                alert(`Bot aktif dengan maksimal ${val} proses bersamaan!`);
+            });
+        }
+
+        async function apiAction(endpoint) {
+            const res = await fetch(endpoint, { method: 'POST' });
+            const data = await res.json();
+            alert(data.msg);
+        }
 
         socket.on('log', data => {
-            logBox.innerHTML += `<div class="log-entry ${data.type}">[${new Date().toLocaleTimeString()}] ${data.msg}</div>`;
+            logBox.innerHTML += `<div class="${data.type}">[${new Date().toLocaleTimeString()}] ${data.msg}</div>`;
             logBox.scrollTop = logBox.scrollHeight;
         });
 
@@ -69,20 +127,34 @@
             document.getElementById('st-active').innerText = s.active;
             document.getElementById('st-success').innerText = s.success;
             document.getElementById('st-failed').innerText = s.failed;
+
+            // Update Progress Bar
+            if (totalQueue > 0 && s.queue > 0) {
+                document.getElementById('progressBg').style.display = 'block';
+                let percent = ((totalQueue - s.queue) / totalQueue) * 100;
+                document.getElementById('progressBar').style.width = percent + '%';
+            } else if (s.queue === 0) {
+                document.getElementById('progressBg').style.display = 'none';
+                document.getElementById('progressBar').style.width = '0%';
+                totalQueue = 0;
+            }
         });
 
         socket.on('new_failed', data => {
             const list = document.getElementById('failedList');
             const id = 'fail_' + data.filename.replace(/[^a-zA-Z0-9]/g, '');
+            if(document.getElementById(id)) return; // Cegah duplikat UI
+
             list.innerHTML += `
                 <div class="failed-item" id="${id}">
-                    <a href="/gagal/${data.filename}" target="_blank">
-                        <img src="/gagal/${data.filename}" alt="Gagal">
-                    </a>
+                    <a href="/gagal/${data.filename}" target="_blank"><img src="/gagal/${data.filename}"></a>
                     <div style="flex:1;">
                         <span style="font-size:12px; color:gray;">${data.filename}</span>
-                        <input type="text" id="input_${id}" placeholder="Ketik Resi (Gunakan koma jika > 1)">
-                        <button onclick="submitManual('${data.filename}', '${id}')" style="padding: 6px;">Simpan</button>
+                        <input type="text" id="input_${id}" placeholder="Ketik Resi (Koma jika >1)">
+                        <div class="btn-group">
+                            <button class="btn-primary" onclick="submitManual('${data.filename}', '${id}')">Simpan</button>
+                            <button class="btn-warn" onclick="retryFailed('${data.filename}', '${id}')">Retry OCR</button>
+                        </div>
                     </div>
                 </div>`;
         });
@@ -91,6 +163,7 @@
             const files = document.getElementById('fileInput').files;
             if (files.length === 0) return alert('Pilih file dulu!');
             
+            totalQueue += files.length;
             const formData = new FormData();
             for (let i = 0; i < files.length; i++) formData.append('photos', files[i]);
             
@@ -100,23 +173,27 @@
 
         async function submitManual(filename, elementId) {
             const inputVal = document.getElementById(`input_${elementId}`).value;
-            if (!inputVal) return alert('Nomor resi tidak boleh kosong!');
-
+            if (!inputVal) return alert('Resi kosong!');
             const res = await fetch('/api/override', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ filename, resiString: inputVal })
             });
-            
             if (res.ok) document.getElementById(elementId).remove();
+        }
+
+        async function retryFailed(filename, elementId) {
+            document.getElementById(elementId).remove();
+            await fetch('/api/retry', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ filename })
+            });
         }
 
         async function exportExcel() {
             const res = await fetch('/api/export');
-            if(!res.ok) return alert('Belum ada data sukses / gagal ekspor.');
+            if(!res.ok) return alert('Data kosong.');
             const data = await res.json();
-            
-            let html = '<div style="color:#7fd962; font-size:13px; margin-bottom:5px;">File siap didownload (cek folder manifests/):</div>';
+            let html = '<div style="color:var(--ok);">File siap:</div>';
             data.files.forEach(f => html += `<div>- ${f}</div>`);
             document.getElementById('downloadLinks').innerHTML = html;
         }
