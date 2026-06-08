@@ -2,36 +2,25 @@ const sharp = require('sharp');
 const Tesseract = require('tesseract.js');
 
 const applyHeavyScenario = async (buffer, scenario) => {
-    // Skala masif 3000px untuk meratakan pixel font melengkung
-    let img = sharp(buffer).resize({ width: 3000, withoutEnlargement: true });
-    let psm = Tesseract.PSM.SPARSE_TEXT; 
+    let img = sharp(buffer).resize({ width: 2000, withoutEnlargement: true });
+    let psm = Tesseract.PSM.AUTO;
 
     switch (scenario) {
-        case 1:
-            // Standar Kontras Tinggi
-            img = img.normalize().linear(1.5, -20);
-            break;
+        case 1: break; // Normal
         case 2:
-            // Hitam Putih Murni (Thresholding Kuat)
-            img = img.grayscale().normalize().threshold(150);
+            img = img.grayscale().normalize();
+            psm = Tesseract.PSM.SPARSE_TEXT; 
             break;
         case 3:
-            // TRIK RAHASIA FONT MELENGKUNG: Blur sedikit lalu ditebalkan
-            // Ini membuat lekukan font menyatu dan menghilangkan jarak antar huruf
-            img = img.grayscale().blur(0.8).threshold(130);
+            img = img.grayscale().median(3).sharpen({ sigma: 2 });
+            psm = Tesseract.PSM.SPARSE_TEXT;
             break;
         case 4:
-            // Sharpen Maksimal untuk mempertegas garis
-            img = img.grayscale().sharpen({ sigma: 3, m1: 1000, m2: 50 });
+            img = img.grayscale().normalize().threshold(140);
             break;
         case 5:
-            // Negatif: Teks putih, background hitam
-            img = img.grayscale().normalize().negate();
-            break;
-        case 6:
-            // Teks Blok (Menganggap gambar sebagai satu kesatuan paragraf)
-            img = img.grayscale().normalize();
-            psm = Tesseract.PSM.SINGLE_BLOCK;
+            img = img.grayscale().linear(1.5, -(128 * 0.5));
+            psm = Tesseract.PSM.SINGLE_BLOCK; 
             break;
     }
     return { buffer: await img.toBuffer(), psm };
@@ -39,34 +28,33 @@ const applyHeavyScenario = async (buffer, scenario) => {
 
 const extractResiOffline = async (imagePath) => {
     const originalBuffer = await sharp(imagePath).toBuffer();
-    let allFoundResis = new Set(); // Wadah untuk mengumpulkan SEMUA temuan
+    let allFoundResis = new Set(); // Wadah pengumpul resi dari semua lapis
 
-    // KUNCI UTAMA: Jangan berhenti! 
-    // Jalankan SEMUA 6 skenario dan sapu bersih semua resi yang tertangkap
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= 5; i++) {
         try {
             const { buffer, psm } = await applyHeavyScenario(originalBuffer, i);
-            
-            // Whitelist: Paksa Tesseract HANYA melihat huruf kapital dan angka
             const { data: { text } } = await Tesseract.recognize(buffer, 'eng', {
-                tessedit_pageseg_mode: psm,
-                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+                tessedit_pageseg_mode: psm
             });
             
-            // Bersihkan teks, hilangkan spasi/simbol
-            const cleanText = text.replace(/[^A-Z0-9]/g, '');
+            // 1. Bersihkan teks: Hanya sisakan huruf dan angka (spasi & koma hilang)
+            const cleanText = text.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
             
-            // Regex Pattern (Ambil Prefix JX/JO/JD/JZ/13 dan tangkap 8-15 digit body-nya)
-            const RESI_REGEX = /(J[XODZ]|13)([A-Z0-9]{8,15})/g;
+            // 2. REGEX ANTI-BOCOR: 
+            // Prefix: JX/JO/JD/JZ/13
+            // Body: HANYA boleh berisi angka dan huruf typo (OQDCUILZASGTB).
+            // Karena tidak ada huruf 'J' atau 'X' di dalam body, mesin tidak akan 
+            // menelan resi sebelahnya!
+            const RESI_REGEX = /(J[XODZ]|13)([0-9OQDCUILZASGTB]{8,15})/g;
             
             let match;
             while ((match = RESI_REGEX.exec(cleanText)) !== null) {
                 let prefix = match[1];
                 let rawBody = match[2];
                 
-                // Koreksi Typo HANYA pada bagian body/angka, biarkan prefixnya utuh
+                // 3. Auto-Translate Typo ke Angka
                 let body = rawBody
-                    .replace(/[OQDU]/g, '0')
+                    .replace(/[OQDCU]/g, '0')
                     .replace(/[IL|]/g, '1')
                     .replace(/[Z]/g, '2')
                     .replace(/[A]/g, '4')
@@ -75,7 +63,7 @@ const extractResiOffline = async (imagePath) => {
                     .replace(/[T]/g, '7')
                     .replace(/[B]/g, '8');
                 
-                // Validasi akhir: Pastikan body yang sudah dikoreksi murni angka
+                // 4. Validasi Final
                 if (/^[0-9]{8,15}$/.test(body)) {
                     allFoundResis.add(prefix + body);
                 }
@@ -85,16 +73,16 @@ const extractResiOffline = async (imagePath) => {
         }
     }
     
-    // Jika dari 6 lapis pemrosesan ada resi yang berhasil disaring, return semuanya!
+    // Jika dari ke-5 lapis pemrosesan ada resi yang didapat, langsung kembalikan datanya!
     if (allFoundResis.size > 0) {
         return {
             success: true,
             resis: Array.from(allFoundResis),
-            scenario: 'Heavy Mode (6 Lapis)'
+            scenario: 'Multi-Lapis (Akurat)'
         };
     }
     
-    return { success: false, resis: [], scenario: 'Gagal di Semua Lapis' };
+    return { success: false, resis: [], scenario: 'Gagal' };
 };
 
 module.exports = { extractResiOffline };
