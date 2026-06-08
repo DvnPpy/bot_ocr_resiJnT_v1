@@ -127,10 +127,23 @@ app.post('/api/cancel-queue', (req, res) => {
 });
 
 app.post('/api/reset-stats', (req, res) => {
+    // 1. Reset Data Sukses
     db.successData = [];
     saveDB();
+    
+    // 2. Reset Data Gagal (Hapus semua foto fisik di folder POD_GAGAL)
+    const files = fs.readdirSync(GAGAL_DIR);
+    files.forEach(file => {
+        const filePath = path.join(GAGAL_DIR, file);
+        // Pastikan hanya menghapus file, bukan folder
+        if (fs.lstatSync(filePath).isFile()) {
+            try { fs.unlinkSync(filePath); } catch (e) {}
+        }
+    });
+
+    // 3. Update UI Dashboard
     updateDashboard();
-    res.json({ ok: true, msg: 'Statistik sukses di-reset ke 0.' });
+    res.json({ ok: true, msg: 'Semua statistik (Sukses & Gagal) beserta foto gagal berhasil disapu bersih!' });
 });
 
 app.post('/api/retry', (req, res) => {
