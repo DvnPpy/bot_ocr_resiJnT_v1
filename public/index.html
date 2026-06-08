@@ -8,14 +8,13 @@
         :root { --bg: #0f1419; --panel: #171c25; --border: #2a313d; --text: #e6edf3; --accent: #ffb454; --ok: #7fd962; --err: #ff6b6b; --warn: #ffd866;}
         * { box-sizing: border-box; font-family: 'Space Grotesk', sans-serif; }
         body { background: var(--bg); color: var(--text); padding: 20px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-bottom: 20px; }
         .card { background: var(--panel); border: 1px solid var(--border); padding: 20px; border-radius: 8px; text-align: center; }
         .card h3 { margin: 0; color: #8b949e; font-size: 14px; }
         .card p { margin: 10px 0 0; font-size: 28px; font-weight: bold; color: var(--accent); }
         .main-area { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .box { background: var(--panel); border: 1px solid var(--border); padding: 20px; border-radius: 8px; }
         
-        /* Progress Bar */
         .progress-bg { width: 100%; background: var(--border); border-radius: 5px; margin-bottom: 15px; overflow: hidden; display: none; }
         .progress-bar { height: 10px; background: var(--accent); width: 0%; transition: width 0.3s; }
         
@@ -46,6 +45,7 @@
         <div class="card"><h3>Sedang Diproses</h3><p id="st-active" class="info">0</p></div>
         <div class="card"><h3>Total Sukses</h3><p id="st-success" class="success">0</p></div>
         <div class="card"><h3>Gagal / Manual</h3><p id="st-failed" class="error">0</p></div>
+        <div class="card"><h3>Total Permanen</h3><p id="st-lifetime" style="color: #5ccfe6;">0</p></div>
     </div>
 
     <div class="main-area">
@@ -115,8 +115,6 @@
             const res = await fetch(endpoint, { method: 'POST' });
             const data = await res.json();
             alert(data.msg);
-            
-            // Tambahan: Kosongkan list gambar gagal di layar jika tombol reset ditekan
             if (endpoint === '/api/reset-stats') {
                 document.getElementById('failedList').innerHTML = '';
             }
@@ -132,8 +130,8 @@
             document.getElementById('st-active').innerText = s.active;
             document.getElementById('st-success').innerText = s.success;
             document.getElementById('st-failed').innerText = s.failed;
+            document.getElementById('st-lifetime').innerText = s.lifetime;
 
-            // Update Progress Bar
             if (totalQueue > 0 && s.queue > 0) {
                 document.getElementById('progressBg').style.display = 'block';
                 let percent = ((totalQueue - s.queue) / totalQueue) * 100;
@@ -148,7 +146,7 @@
         socket.on('new_failed', data => {
             const list = document.getElementById('failedList');
             const id = 'fail_' + data.filename.replace(/[^a-zA-Z0-9]/g, '');
-            if(document.getElementById(id)) return; // Cegah duplikat UI
+            if(document.getElementById(id)) return; 
 
             list.innerHTML += `
                 <div class="failed-item" id="${id}">
