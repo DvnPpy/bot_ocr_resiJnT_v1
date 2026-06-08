@@ -1,30 +1,18 @@
 const sharp = require('sharp');
 const Tesseract = require('tesseract.js');
 
-// Fungsi 5 Lapis Manipulasi Gambar
 const applyScenario = async (buffer, scenario) => {
     let img = sharp(buffer).resize({ width: 1600, withoutEnlargement: true });
-    
     switch (scenario) {
-        case 1: // 1. Optimal (Original Resized)
-            break;
-        case 2: // 2. Grayscale (Buang noise warna)
-            img = img.grayscale();
-            break;
-        case 3: // 3. High Contrast (Pekatkan tinta)
-            img = img.grayscale().linear(1.5, -(128 * 0.5));
-            break;
-        case 4: // 4. Binarization (Hitam Putih Murni)
-            img = img.grayscale().threshold(128);
-            break;
-        case 5: // 5. Sharpen (Pertajam foto blur)
-            img = img.sharpen({ sigma: 2 });
-            break;
+        case 1: break;
+        case 2: img = img.grayscale(); break;
+        case 3: img = img.grayscale().linear(1.5, -(128 * 0.5)); break;
+        case 4: img = img.grayscale().threshold(128); break;
+        case 5: img = img.sharpen({ sigma: 2 }); break;
     }
     return await img.toBuffer();
 };
 
-// Fungsi Ekstraksi Resi
 const extractResiOffline = async (imagePath) => {
     const originalBuffer = await sharp(imagePath).toBuffer();
     
@@ -33,9 +21,12 @@ const extractResiOffline = async (imagePath) => {
             const processedBuffer = await applyScenario(originalBuffer, i);
             const { data: { text } } = await Tesseract.recognize(processedBuffer, 'eng');
             
-            // Deteksi Format J&T (JP/JX/JD/JO/JZ atau 13xxxx)
-            const RESI_REGEX = /\b(J[P|X|D|O|Z][0-9]{8,15}|13[0-9]{10,15})\b/gi;
-            const matches = text.match(RESI_REGEX);
+            // KUNCI OPSI 5: Hapus semua spasi, enter (\n), dan strip sebelum dicek Regex
+            const cleanText = text.replace(/[\r\n\s\-]+/g, ''); 
+            
+            // Regex khusus JX, JO, JD, JZ, dan awalan 13
+            const RESI_REGEX = /(J[XODZ][0-9]{8,15}|13[0-9]{10,15})/gi;
+            const matches = cleanText.match(RESI_REGEX);
             
             if (matches && matches.length > 0) {
                 return {
@@ -48,8 +39,6 @@ const extractResiOffline = async (imagePath) => {
             console.error(`[!] Error OCR Skenario ${i}:`, err.message);
         }
     }
-    
-    // Jika lewat 5 lapis tetap gagal
     return { success: false, resis: [], scenario: 5 };
 };
 
