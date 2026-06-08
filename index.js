@@ -18,20 +18,17 @@ app.use('/gagal', express.static('POD_GAGAL'));
 
 const UPLOAD_DIR = './temp_uploads';
 const GAGAL_DIR = './POD_GAGAL';
-const DB_FILE = './database.json'; // Database Lokal Ringan
+const DB_FILE = './database.json';
 
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(GAGAL_DIR)) fs.mkdirSync(GAGAL_DIR, { recursive: true });
 
 // --- SISTEM DATABASE SEDERHANA ---
-let db = { sessionFiles: [], successData: [], totalLifetimeResi: 0 }; // Tambahkan totalLifetimeResi
-
+let db = { sessionFiles: [], successData: [], totalLifetimeResi: 0 };
 if (fs.existsSync(DB_FILE)) {
     const rawData = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
-    // Gabungkan data lama dengan struktur baru agar tidak error
     db = { ...db, ...rawData }; 
 }
-const saveDB = () => fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 const saveDB = () => fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 
 const storage = multer.diskStorage({
@@ -42,7 +39,7 @@ const upload = multer({ storage });
 
 let queue = [];
 let activeTask = 0;
-let MAX_CONCURRENT = 10; // Default diatur ke 10 sesuai permintaan, tapi dilock UI
+let MAX_CONCURRENT = 10; 
 
 const getDailyFolder = () => {
     const STORAGE_DIR = './pod_storage';
@@ -59,7 +56,8 @@ const updateDashboard = () => {
         queue: queue.length,
         active: activeTask,
         success: db.successData.length,
-        failed: fs.readdirSync(GAGAL_DIR).filter(f => f !== '.gitkeep').length
+        failed: fs.readdirSync(GAGAL_DIR).filter(f => f !== '.gitkeep').length,
+        lifetime: db.totalLifetimeResi
     });
 };
 
@@ -88,6 +86,7 @@ const processQueue = async () => {
                 }
                 if (!db.successData.some(d => d.resi === resi)) {
                     db.successData.push({ original: task.originalName, resi, info: `Skenario ${result.scenario}` });
+                    db.totalLifetimeResi++;
                 }
             }));
             db.sessionFiles.push(task.originalName);
@@ -110,44 +109,38 @@ const processQueue = async () => {
     }
 };
 
-// --- API BARU SESUAI OPSI ---
-
 app.post('/api/set-concurrent', (req, res) => {
     MAX_CONCURRENT = req.body.max || 10;
     res.json({ ok: true });
 });
 
 app.post('/api/clear-memory', (req, res) => {
-    db.sessionFiles = []; // Kosongkan ingatan file
+    db.sessionFiles = []; 
     saveDB();
     res.json({ ok: true, msg: 'Ingatan duplikasi file berhasil dihapus!' });
 });
 
 app.post('/api/cancel-queue', (req, res) => {
     queue.forEach(q => { if(fs.existsSync(q.path)) fs.unlinkSync(q.path); });
-    queue = []; // Kosongkan antrean
+    queue = []; 
     updateDashboard();
     res.json({ ok: true, msg: 'Semua antrean yang belum jalan dibatalkan.' });
 });
 
 app.post('/api/reset-stats', (req, res) => {
-    // 1. Reset Data Sukses
     db.successData = [];
     saveDB();
     
-    // 2. Reset Data Gagal (Hapus semua foto fisik di folder POD_GAGAL)
     const files = fs.readdirSync(GAGAL_DIR);
     files.forEach(file => {
         const filePath = path.join(GAGAL_DIR, file);
-        // Pastikan hanya menghapus file, bukan folder
         if (fs.lstatSync(filePath).isFile()) {
             try { fs.unlinkSync(filePath); } catch (e) {}
         }
     });
 
-    // 3. Update UI Dashboard
     updateDashboard();
-    res.json({ ok: true, msg: 'Semua statistik (Sukses & Gagal) beserta foto gagal berhasil disapu bersih!' });
+    res.json({ ok: true, msg: 'Statistik Sukses & Gagal beserta foto berhasil disapu bersih!' });
 });
 
 app.post('/api/retry', (req, res) => {
@@ -164,7 +157,6 @@ app.post('/api/retry', (req, res) => {
     res.json({ ok: true });
 });
 
-// --- API LAMA ---
 app.post('/api/upload', upload.array('photos'), (req, res) => {
     req.files.forEach(file => {
         if (db.sessionFiles.includes(file.originalname)) {
@@ -193,11 +185,12 @@ app.post('/api/override', async (req, res) => {
         
         if (!db.successData.some(d => d.resi === resi)) {
             db.successData.push({ original: filename, resi, info: 'Manual Override' });
+            db.totalLifetimeResi++;
         }
     }));
     db.sessionFiles.push(filename);
     saveDB();
-    if(fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath); // Hapus dari folder gagal setelah sukses manual
+    if(fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath); 
 
     io.emit('log', { type: 'success', msg: `🛠️ Manual: ${filename} -> ${resiArray.join(', ')}` });
     updateDashboard();
