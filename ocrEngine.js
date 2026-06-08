@@ -6,7 +6,7 @@ const applyHeavyScenario = async (buffer, scenario) => {
     let psm = Tesseract.PSM.AUTO;
 
     switch (scenario) {
-        case 1: break; // Normal
+        case 1: break; 
         case 2:
             img = img.grayscale().normalize();
             psm = Tesseract.PSM.SPARSE_TEXT; 
@@ -28,7 +28,7 @@ const applyHeavyScenario = async (buffer, scenario) => {
 
 const extractResiOffline = async (imagePath) => {
     const originalBuffer = await sharp(imagePath).toBuffer();
-    let allFoundResis = new Set(); // Wadah pengumpul resi dari semua lapis
+    let allFoundResis = new Set(); 
 
     for (let i = 1; i <= 5; i++) {
         try {
@@ -37,14 +37,7 @@ const extractResiOffline = async (imagePath) => {
                 tessedit_pageseg_mode: psm
             });
             
-            // 1. Bersihkan teks: Hanya sisakan huruf dan angka (spasi & koma hilang)
             const cleanText = text.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-            
-            // 2. REGEX ANTI-BOCOR: 
-            // Prefix: JX/JO/JD/JZ/13
-            // Body: HANYA boleh berisi angka dan huruf typo (OQDCUILZASGTB).
-            // Karena tidak ada huruf 'J' atau 'X' di dalam body, mesin tidak akan 
-            // menelan resi sebelahnya!
             const RESI_REGEX = /(J[XODZ]|13)([0-9OQDCUILZASGTB]{8,15})/g;
             
             let match;
@@ -52,7 +45,6 @@ const extractResiOffline = async (imagePath) => {
                 let prefix = match[1];
                 let rawBody = match[2];
                 
-                // 3. Auto-Translate Typo ke Angka
                 let body = rawBody
                     .replace(/[OQDCU]/g, '0')
                     .replace(/[IL|]/g, '1')
@@ -63,7 +55,6 @@ const extractResiOffline = async (imagePath) => {
                     .replace(/[T]/g, '7')
                     .replace(/[B]/g, '8');
                 
-                // 4. Validasi Final
                 if (/^[0-9]{8,15}$/.test(body)) {
                     allFoundResis.add(prefix + body);
                 }
@@ -73,7 +64,6 @@ const extractResiOffline = async (imagePath) => {
         }
     }
     
-    // Jika dari ke-5 lapis pemrosesan ada resi yang didapat, langsung kembalikan datanya!
     if (allFoundResis.size > 0) {
         return {
             success: true,
