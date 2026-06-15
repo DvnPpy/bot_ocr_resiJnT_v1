@@ -52,15 +52,24 @@
         <div class="box">
             <div class="setup-box" id="setupBox">
                 <h3>⚙️ Pengaturan Awal (Wajib)</h3>
-                <label>Pilih Jumlah Proses Bersamaan (Max 10):</label>
+                
+                <label>Pilih Mesin OCR:</label>
+                <select id="engineSelect" onchange="toggleConcurrent()">
+                    <option value="" disabled selected>-- Pilih OCR Engine --</option>
+                    <option value="1">Engine 1 (Tesseract Offline - Cepat)</option>
+                    <option value="2">Engine 2 (OCR.space Online - Akurasi Tinggi)</option>
+                </select>
+            
+                <label style="margin-top:10px; display:block;">Pilih Jumlah Proses Bersamaan:</label>
                 <select id="concurrentSelect">
                     <option value="" disabled selected>-- Pilih Kecepatan Proses --</option>
-                    <option value="1">1 Foto (Sangat Ringan)</option>
+                    <option value="1">1 Foto (Wajib untuk Engine 2 / Ringan)</option>
                     <option value="3">3 Foto (Aman)</option>
                     <option value="5">5 Foto (Cepat)</option>
                     <option value="10">10 Foto (Maksimal - Butuh CPU Tinggi)</option>
                 </select>
-                <button class="btn-warn" onclick="lockSetup()">Kunci & Aktifkan Bot</button>
+                
+                <button class="btn-warn" onclick="lockSetup()" style="margin-top: 15px;">Kunci & Aktifkan Bot</button>
             </div>
 
             <div id="uploadArea" class="disabled-area">
