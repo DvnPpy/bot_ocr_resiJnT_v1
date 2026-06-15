@@ -1,36 +1,12 @@
-const sharp = require('sharp');
-const Tesseract = require('tesseract.js');
-
-const applyHeavyScenario = async (buffer, scenario) => {
-    let img = sharp(buffer).resize({ width: 2000, withoutEnlargement: true });
-    let psm = Tesseract.PSM.AUTO;
-
-    switch (scenario) {
-        case 1: break; 
-        case 2:
-            img = img.grayscale().normalize();
-            psm = Tesseract.PSM.SPARSE_TEXT; 
-            break;
-        case 3:
-            img = img.grayscale().median(3).sharpen({ sigma: 2 });
-            psm = Tesseract.PSM.SPARSE_TEXT;
-            break;
-        case 4:
-            img = img.grayscale().normalize().threshold(140);
-            break;
-        case 5:
-            img = img.grayscale().linear(1.5, -(128 * 0.5));
-            psm = Tesseract.PSM.SINGLE_BLOCK; 
-            break;
-    }
-    return { buffer: await img.toBuffer(), psm };
-};
-
 const extractResiOffline = async (imagePath) => {
     const originalBuffer = await sharp(imagePath).toBuffer();
     let allFoundResis = new Set(); 
+    let isSuccess = false; // Flag untuk menghentikan loop jika sudah ketemu
+    let successfulScenario = '';
 
     for (let i = 1; i <= 5; i++) {
+        if (isSuccess) break; // ⚡ OPTIMASI: Hentikan skenario berat jika resi sudah ditemukan
+
         try {
             const { buffer, psm } = await applyHeavyScenario(originalBuffer, i);
             const { data: { text } } = await Tesseract.recognize(buffer, 'eng', {
@@ -38,7 +14,10 @@ const extractResiOffline = async (imagePath) => {
             });
             
             const cleanText = text.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-            const RESI_REGEX = /(J[XODZ]|13)([0-9OQDCUILZASGTB]{8,15})/g;
+            
+            // Regex diubah untuk menangkap semua rentetan angka/huruf mirip angka
+            // Panjangnya akan divalidasi di bawah secara ketat
+            const RESI_REGEX = /(J[XODZ]|13)([0-9OQDCUILZASGTB]+)/g;
             
             let match;
             while ((match = RESI_REGEX.exec(cleanText)) !== null) {
@@ -55,8 +34,27 @@ const extractResiOffline = async (imagePath) => {
                     .replace(/[T]/g, '7')
                     .replace(/[B]/g, '8');
                 
-                if (/^[0-9]{8,15}$/.test(body)) {
+                let isValid = false;
+
+                // 🛑 ATURAN KETAT
+                if (prefix.startsWith('J')) {
+                    // JX, JO, JD, JZ harus tepat +10 atau +11 angka di belakangnya
+                    if (body.length === 10 || body.length === 11) {
+                        isValid = true;
+                    }
+                } else if (prefix === '13') {
+                    // 13 harus memiliki total panjang 10 atau 11 digit dari depan hingga belakang
+                    // Artinya digit di belakang angka 13 harus tepat 8 atau 9 angka
+                    if (body.length === 8 || body.length === 9) {
+                        isValid = true;
+                    }
+                }
+
+                // Cek tambahan agar memastikan body murni angka setelah diconvert
+                if (isValid && /^[0-9]+$/.test(body)) {
                     allFoundResis.add(prefix + body);
+                    isSuccess = true;
+                    successfulScenario = `Skenario ${i}`;
                 }
             }
         } catch (err) {
@@ -68,7 +66,7 @@ const extractResiOffline = async (imagePath) => {
         return {
             success: true,
             resis: Array.from(allFoundResis),
-            scenario: 'Multi-Lapis (Akurat)'
+            scenario: successfulScenario
         };
     }
     
