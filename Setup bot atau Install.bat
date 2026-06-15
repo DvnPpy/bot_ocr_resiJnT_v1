@@ -45,6 +45,7 @@ echo.
 echo [TAHAP 2] Menginstal Modul Aplikasi Offline...
 echo [>] Menarik mesin OCR lokal (Tesseract), Sharp, ExcelJS, dll...
 call npm install
+call npm install better-sqlite3 chokidar
 
 if %errorlevel% neq 0 (
     color 0C
