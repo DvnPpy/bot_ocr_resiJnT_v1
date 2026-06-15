@@ -106,17 +106,34 @@
         const logBox = document.getElementById('logBox');
         let totalQueue = 0;
 
+        function toggleConcurrent() {
+            const engine = document.getElementById('engineSelect').value;
+            const concurrent = document.getElementById('concurrentSelect');
+            if (engine === '2') {
+                concurrent.value = '1';
+                concurrent.disabled = true; // Kunci paksa ke 1 agar tidak kena limit burst
+            } else {
+                concurrent.disabled = false;
+                concurrent.value = ""; // Reset
+            }
+        }
+        
         function lockSetup() {
-            const val = document.getElementById('concurrentSelect').value;
-            if(!val) return alert('Pilih jumlah proses dulu!');
+            const engine = document.getElementById('engineSelect').value;
+            const max = document.getElementById('concurrentSelect').value;
             
-            fetch('/api/set-concurrent', {
+            if(!engine) return alert('Pilih Mesin OCR dulu!');
+            if(!max && engine === '1') return alert('Pilih jumlah proses dulu!');
+            
+            const finalMax = engine === '2' ? 1 : parseInt(max);
+        
+            fetch('/api/set-setup', {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ max: parseInt(val) })
+                body: JSON.stringify({ max: finalMax, engine: parseInt(engine) })
             }).then(() => {
                 document.getElementById('setupBox').style.display = 'none';
                 document.getElementById('uploadArea').classList.remove('disabled-area');
-                alert(`Bot aktif dengan maksimal ${val} proses bersamaan!`);
+                alert(`Bot aktif! Menggunakan Engine OCR ${engine} dengan maksimal ${finalMax} proses bersamaan.`);
             });
         }
 
