@@ -9,7 +9,6 @@ const sharp = require('sharp');
 const Database = require('better-sqlite3');
 const chokidar = require('chokidar');
 
-// Import Engine OCR
 const { extractResiOffline } = require('./ocrEngine');
 const { extractResiOcrSpace } = require('./ocrEngine2');
 
@@ -24,10 +23,30 @@ app.use('/gagal', express.static('POD_GAGAL'));
 const UPLOAD_DIR = './temp_uploads';
 const GAGAL_DIR = './POD_GAGAL';
 const DROP_ZONE = './DROP_ZONE';
+const LOG_DIR = './logs'; // Folder Log Baru
 
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(GAGAL_DIR)) fs.mkdirSync(GAGAL_DIR, { recursive: true });
 if (!fs.existsSync(DROP_ZONE)) fs.mkdirSync(DROP_ZONE, { recursive: true });
+if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+
+// --- SISTEM PENULISAN LOG REAL-TIME ---
+const writeLog = (type, msg) => {
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0]; 
+    const timeStr = now.toTimeString().split(' ')[0]; 
+    const logFile = path.join(LOG_DIR, `bot_log_${dateStr}.txt`);
+    const logMessage = `[${timeStr}] [${type.toUpperCase()}] ${msg}\n`;
+
+    // Tulis ke file secara real-time
+    fs.appendFileSync(logFile, logMessage);
+
+    // Kirim ke UI Dashboard
+    io.emit('log', { type, msg });
+    
+    // Cetak ke terminal (opsional, bisa dihapus jika terminal mau sepi)
+    console.log(logMessage.trim());
+};
 
 // --- SETUP DATABASE SQLITE ---
 const db = new Database('database.db');
@@ -70,7 +89,7 @@ chokidar.watch(DROP_ZONE, {
     if (!/\.(jpg|jpeg|png)$/i.test(filename)) return;
 
     if (checkSession.get(filename)) {
-        io.emit('log', { type: 'warn', msg: `⚠️ Abaikan duplikat dari folder: ${filename}` });
+        writeLog('warn', `⚠️ Abaikan duplikat dari folder: ${filename}`);
         try { fs.unlinkSync(filePath); } catch(e) {}
         return;
     }
@@ -113,7 +132,7 @@ const processQueue = async () => {
     updateDashboard();
 
     try {
-        io.emit('log', { type: 'info', msg: `⚙️ Proses [Engine ${SELECTED_ENGINE}]: ${task.originalName}...` });
+        writeLog('info', `⚙️ Proses [Engine ${SELECTED_ENGINE}]: ${task.originalName}...`);
         
         let result;
         if (SELECTED_ENGINE === 1) {
@@ -136,18 +155,18 @@ const processQueue = async () => {
             }));
             
             insertSession.run(task.originalName);
-            io.emit('log', { type: 'success', msg: `✅ Sukses: ${task.originalName} -> ${result.resis.join(', ')}` });
+            writeLog('success', `✅ Sukses: ${task.originalName} -> ${result.resis.join(', ')}`);
             if (fs.existsSync(task.path)) fs.unlinkSync(task.path); 
         } else {
             if (fs.existsSync(task.path)) {
                 const targetPath = path.join(GAGAL_DIR, task.originalName);
                 fs.renameSync(task.path, targetPath);
             }
-            io.emit('log', { type: 'error', msg: `❌ Gagal: ${task.originalName}` });
+            writeLog('error', `❌ Gagal: ${task.originalName}`);
             io.emit('new_failed', { filename: task.originalName });
         }
     } catch (err) {
-        io.emit('log', { type: 'error', msg: `🚨 Error: ${task.originalName}` });
+        writeLog('error', `🚨 Error Sistem: ${task.originalName} - ${err.message}`);
     } finally {
         activeTask--;
         processQueue();
@@ -158,11 +177,13 @@ const processQueue = async () => {
 app.post('/api/set-setup', (req, res) => {
     SELECTED_ENGINE = req.body.engine || 1;
     MAX_CONCURRENT = SELECTED_ENGINE === 2 ? 1 : (req.body.max || 10);
+    writeLog('info', `[SISTEM] Bot diaktifkan dengan Engine ${SELECTED_ENGINE} | Max Proses: ${MAX_CONCURRENT}`);
     res.json({ ok: true });
 });
 
 app.post('/api/clear-memory', (req, res) => {
     deleteAllSessions.run();
+    writeLog('warn', '[SISTEM] Ingatan duplikasi file berhasil dihapus dari SQLite.');
     res.json({ ok: true, msg: 'Ingatan duplikasi file berhasil dihapus dari SQLite!' });
 });
 
@@ -170,6 +191,7 @@ app.post('/api/cancel-queue', (req, res) => {
     queue.forEach(q => { if(fs.existsSync(q.path)) fs.unlinkSync(q.path); });
     queue = []; 
     updateDashboard();
+    writeLog('warn', '[SISTEM] Semua antrean dibatalkan oleh pengguna.');
     res.json({ ok: true, msg: 'Semua antrean yang belum jalan dibatalkan.' });
 });
 
@@ -185,6 +207,7 @@ app.post('/api/reset-stats', (req, res) => {
     });
 
     updateDashboard();
+    writeLog('warn', '[SISTEM] Statistik Sukses & Gagal beserta foto berhasil disapu bersih.');
     res.json({ ok: true, msg: 'Statistik Sukses & Gagal beserta foto berhasil disapu bersih!' });
 });
 
@@ -196,7 +219,7 @@ app.post('/api/retry', (req, res) => {
     if (fs.existsSync(sourcePath)) {
         fs.renameSync(sourcePath, tempPath);
         queue.push({ path: tempPath, originalName: filename });
-        io.emit('log', { type: 'warn', msg: `🔄 Mencoba ulang: ${filename}` });
+        writeLog('warn', `🔄 Mencoba ulang manual: ${filename}`);
         processQueue();
     }
     res.json({ ok: true });
@@ -221,7 +244,7 @@ app.post('/api/override', async (req, res) => {
     insertSession.run(filename);
     if(fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath); 
 
-    io.emit('log', { type: 'success', msg: `🛠️ Manual: ${filename} -> ${resiArray.join(', ')}` });
+    writeLog('success', `🛠️ Override Manual: ${filename} -> ${resiArray.join(', ')}`);
     updateDashboard();
     res.json({ ok: true });
 });
@@ -253,6 +276,7 @@ app.get('/api/export', async (req, res) => {
     });
     
     await workbook.xlsx.writeFile(path.join(EXPORT_DIR, filename));
+    writeLog('success', `[SISTEM] Export Excel berhasil: ${filename}`);
     res.json({ ok: true, files: [filename] });
 });
 
@@ -266,7 +290,7 @@ const upload = multer({ storage });
 app.post('/api/upload', upload.array('photos'), (req, res) => {
     req.files.forEach(file => {
         if (checkSession.get(file.originalname)) {
-            io.emit('log', { type: 'warn', msg: `⚠️ Abaikan duplikat: ${file.originalname}` });
+            writeLog('warn', `⚠️ Abaikan duplikat via Web: ${file.originalname}`);
             if (fs.existsSync(file.path)) fs.unlinkSync(file.path); 
         } else {
             queue.push({ path: file.path, originalName: file.originalname });
@@ -277,4 +301,7 @@ app.post('/api/upload', upload.array('photos'), (req, res) => {
 });
 
 // --- JALANKAN SERVER ---
-httpServer.listen(31912, () => console.log('🚀 Server Aktif di http://localhost:31912'));
+httpServer.listen(31912, () => {
+    console.log('🚀 Server Aktif di http://localhost:31912');
+    writeLog('info', '[SISTEM] Server Bot Dinyalakan.');
+});
