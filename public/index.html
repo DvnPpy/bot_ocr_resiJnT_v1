@@ -18,7 +18,7 @@
         .progress-bg { width: 100%; background: var(--border); border-radius: 5px; margin-bottom: 15px; overflow: hidden; display: none; }
         .progress-bar { height: 10px; background: var(--accent); width: 0%; transition: width 0.3s; }
         
-        .log-box { height: 350px; overflow-y: auto; background: #0a0e13; padding: 10px; border-radius: 6px; font-size: 13px; border: 1px solid var(--border); }
+        .log-box { height: 400px; overflow-y: auto; background: #0a0e13; padding: 10px; border-radius: 6px; font-size: 13px; border: 1px solid var(--border); }
         .info { color: #5ccfe6; } .success { color: var(--ok); } .warn { color: var(--warn); } .error { color: var(--err); }
         
         input, select, button { padding: 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; margin-bottom: 10px; }
@@ -29,12 +29,14 @@
         .btn-warn { background: var(--warn); color: #000; }
         .btn-success { background: var(--ok); color: #000; }
         
-        .setup-box { border: 2px dashed var(--warn); padding: 15px; margin-bottom: 15px; border-radius: 8px; }
+        .setup-box { border: 2px dashed var(--accent); padding: 15px; margin-bottom: 15px; border-radius: 8px; background: #1a1f29;}
         .disabled-area { opacity: 0.5; pointer-events: none; }
         
         .failed-item { display: flex; gap: 10px; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border); }
         .failed-item img { width: 80px; height: 80px; object-fit: cover; border-radius: 5px; }
         .btn-group { display: flex; gap: 5px; margin-top: 5px; }
+
+        .active-badge { display: none; background: rgba(127, 217, 98, 0.1); border: 1px solid var(--ok); color: var(--ok); padding: 10px; border-radius: 5px; margin-bottom: 15px; font-weight: bold; text-align: center; }
     </style>
 </head>
 <body>
@@ -51,30 +53,32 @@
     <div class="main-area">
         <div class="box">
             <div class="setup-box" id="setupBox">
-                <h3>⚙️ Pengaturan Awal (Wajib)</h3>
+                <h3>⚙️ Panel Kontrol Mesin OCR</h3>
                 
-                <label>Pilih Mesin OCR:</label>
+                <div id="activeEngineInfo" class="active-badge"></div>
+
+                <label>Ganti Mesin OCR:</label>
                 <select id="engineSelect" onchange="toggleConcurrent()">
                     <option value="" disabled selected>-- Pilih OCR Engine --</option>
                     <option value="1">Engine 1 (Tesseract Offline - Cepat)</option>
                     <option value="2">Engine 2 (OCR.space Online - Akurasi Tinggi)</option>
                 </select>
-            
-                <label style="margin-top:10px; display:block;">Pilih Jumlah Proses Bersamaan:</label>
+
+                <label style="margin-top:10px; display:block;">Kecepatan Proses:</label>
                 <select id="concurrentSelect">
-                    <option value="" disabled selected>-- Pilih Kecepatan Proses --</option>
-                    <option value="1">1 Foto (Wajib untuk Engine 2 / Ringan)</option>
+                    <option value="" disabled selected>-- Pilih Kecepatan --</option>
+                    <option value="1">1 Foto (Wajib untuk Engine 2 / Sangat Ringan)</option>
                     <option value="3">3 Foto (Aman)</option>
                     <option value="5">5 Foto (Cepat)</option>
-                    <option value="10">10 Foto (Maksimal - Butuh CPU Tinggi)</option>
+                    <option value="10">10 Foto (Maksimal - CPU Tinggi)</option>
                 </select>
                 
-                <button class="btn-warn" onclick="lockSetup()" style="margin-top: 15px;">Kunci & Aktifkan Bot</button>
+                <button class="btn-primary" onclick="updateSetup()" style="margin-top: 10px;">Simpan & Terapkan Pengaturan</button>
             </div>
 
             <div id="uploadArea" class="disabled-area">
                 <input type="file" id="fileInput" multiple accept="image/*">
-                <button class="btn-primary" onclick="uploadFiles()">Unggah Foto (Massal)</button>
+                <button class="btn-primary" onclick="uploadFiles()">Unggah Foto Manual (Jika tidak pakai Drop Folder)</button>
                 
                 <div class="progress-bg" id="progressBg">
                     <div class="progress-bar" id="progressBar"></div>
@@ -111,29 +115,33 @@
             const concurrent = document.getElementById('concurrentSelect');
             if (engine === '2') {
                 concurrent.value = '1';
-                concurrent.disabled = true; // Kunci paksa ke 1 agar tidak kena limit burst
+                concurrent.disabled = true;
             } else {
                 concurrent.disabled = false;
-                concurrent.value = ""; // Reset
             }
         }
-        
-        function lockSetup() {
+
+        function updateSetup() {
             const engine = document.getElementById('engineSelect').value;
             const max = document.getElementById('concurrentSelect').value;
             
-            if(!engine) return alert('Pilih Mesin OCR dulu!');
-            if(!max && engine === '1') return alert('Pilih jumlah proses dulu!');
+            if(!engine) return alert('Pilih Mesin OCR terlebih dahulu!');
+            if(!max && engine === '1') return alert('Pilih jumlah kecepatan proses!');
             
             const finalMax = engine === '2' ? 1 : parseInt(max);
-        
+
             fetch('/api/set-setup', {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ max: finalMax, engine: parseInt(engine) })
             }).then(() => {
-                document.getElementById('setupBox').style.display = 'none';
+                // Tampilkan Indikator Aktif
+                const infoBadge = document.getElementById('activeEngineInfo');
+                infoBadge.style.display = 'block';
+                const engineName = engine === '1' ? 'Engine 1 (Tesseract Offline)' : 'Engine 2 (OCR.space Online)';
+                infoBadge.innerHTML = `🟢 SEDANG AKTIF: <br> ${engineName} <br> Maksimal Proses: ${finalMax} Foto Bersamaan`;
+                
                 document.getElementById('uploadArea').classList.remove('disabled-area');
-                alert(`Bot aktif! Menggunakan Engine OCR ${engine} dengan maksimal ${finalMax} proses bersamaan.`);
+                alert('Pengaturan Berhasil Diterapkan!');
             });
         }
 
