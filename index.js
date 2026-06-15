@@ -6,9 +6,12 @@ const fs = require('fs');
 const path = require('path');
 const exceljs = require('exceljs');
 const sharp = require('sharp');
-const Database = require('better-sqlite3'); // Import SQLite
-const chokidar = require('chokidar');       // Import Folder Watcher
+const Database = require('better-sqlite3');
+const chokidar = require('chokidar');
+
+// Import Engine OCR
 const { extractResiOffline } = require('./ocrEngine');
+const { extractResiOcrSpace } = require('./ocrEngine2');
 
 const app = express();
 const httpServer = createServer(app);
@@ -20,16 +23,15 @@ app.use('/gagal', express.static('POD_GAGAL'));
 
 const UPLOAD_DIR = './temp_uploads';
 const GAGAL_DIR = './POD_GAGAL';
-const DROP_ZONE = './DROP_ZONE'; // Folder baru untuk drag & drop
+const DROP_ZONE = './DROP_ZONE';
 
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(GAGAL_DIR)) fs.mkdirSync(GAGAL_DIR, { recursive: true });
 if (!fs.existsSync(DROP_ZONE)) fs.mkdirSync(DROP_ZONE, { recursive: true });
 
-// --- MIGRASI DARI JSON KE SQLITE ---
+// --- SETUP DATABASE SQLITE ---
 const db = new Database('database.db');
 
-// Buat tabel jika belum ada
 db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (filename TEXT PRIMARY KEY);
     CREATE TABLE IF NOT EXISTS success_data (
@@ -40,7 +42,6 @@ db.exec(`
     );
 `);
 
-// Prepared statements untuk performa maksimal
 const insertSession = db.prepare('INSERT OR IGNORE INTO sessions (filename) VALUES (?)');
 const checkSession = db.prepare('SELECT filename FROM sessions WHERE filename = ?');
 const insertResi = db.prepare('INSERT OR IGNORE INTO success_data (original_file, resi, info) VALUES (?, ?, ?)');
@@ -49,29 +50,28 @@ const getAllSuccess = db.prepare('SELECT original_file, resi, info FROM success_
 const deleteAllSuccess = db.prepare('DELETE FROM success_data');
 const deleteAllSessions = db.prepare('DELETE FROM sessions');
 
+// --- VARIABEL GLOBAL ---
 let queue = [];
 let activeTask = 0;
-let MAX_CONCURRENT = 10; 
+let MAX_CONCURRENT = 10;
+let SELECTED_ENGINE = 1;
 
 // --- SISTEM FOLDER WATCHER (DROP ZONE) ---
-// Membaca otomatis semua file dan subfolder yang masuk ke DROP_ZONE
 chokidar.watch(DROP_ZONE, {
-    ignored: /(^|[\/\\])\../, // Abaikan file tersembunyi
+    ignored: /(^|[\/\\])\../,
     persistent: true,
     awaitWriteFinish: {
         stabilityThreshold: 2000,
         pollInterval: 100
-    } // Memastikan file sudah tercopy sepenuhnya sebelum diproses
+    }
 }).on('add', (filePath) => {
     const filename = path.basename(filePath);
     
-    // Pastikan hanya memproses file gambar
     if (!/\.(jpg|jpeg|png)$/i.test(filename)) return;
 
-    // Cek apakah file sudah pernah diproses di memory SQLite
     if (checkSession.get(filename)) {
         io.emit('log', { type: 'warn', msg: `⚠️ Abaikan duplikat dari folder: ${filename}` });
-        try { fs.unlinkSync(filePath); } catch(e) {} // Langsung hapus sampah duplikat
+        try { fs.unlinkSync(filePath); } catch(e) {}
         return;
     }
 
@@ -80,6 +80,7 @@ chokidar.watch(DROP_ZONE, {
     updateDashboard();
 });
 
+// --- HELPER FUNCTIONS ---
 const getDailyFolder = () => {
     const STORAGE_DIR = './pod_storage';
     if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true });
@@ -112,8 +113,15 @@ const processQueue = async () => {
     updateDashboard();
 
     try {
-        io.emit('log', { type: 'info', msg: `⚙️ Proses: ${task.originalName}...` });
-        const result = await extractResiOffline(task.path);
+        io.emit('log', { type: 'info', msg: `⚙️ Proses [Engine ${SELECTED_ENGINE}]: ${task.originalName}...` });
+        
+        let result;
+        if (SELECTED_ENGINE === 1) {
+            result = await extractResiOffline(task.path);
+        } else {
+            result = await extractResiOcrSpace(task.path);
+        }
+
         const dailyFolder = getDailyFolder();
 
         if (result.success) {
@@ -124,9 +132,7 @@ const processQueue = async () => {
                     if (fileSizeMB > 2) await sharp(task.path).jpeg({ quality: 85 }).toFile(targetPath);
                     else fs.copyFileSync(task.path, targetPath);
                 }
-                
-                // Simpan ke SQLite
-                insertResi.run(task.originalName, resi, `Skenario ${result.scenario}`);
+                insertResi.run(task.originalName, resi, result.scenario);
             }));
             
             insertSession.run(task.originalName);
@@ -148,11 +154,23 @@ const processQueue = async () => {
     }
 };
 
-// ... (Simpan route API lainnya /set-concurrent, /cancel-queue seperti biasa) ...
+// --- API ROUTES ---
+app.post('/api/set-setup', (req, res) => {
+    SELECTED_ENGINE = req.body.engine || 1;
+    MAX_CONCURRENT = SELECTED_ENGINE === 2 ? 1 : (req.body.max || 10);
+    res.json({ ok: true });
+});
 
 app.post('/api/clear-memory', (req, res) => {
     deleteAllSessions.run();
     res.json({ ok: true, msg: 'Ingatan duplikasi file berhasil dihapus dari SQLite!' });
+});
+
+app.post('/api/cancel-queue', (req, res) => {
+    queue.forEach(q => { if(fs.existsSync(q.path)) fs.unlinkSync(q.path); });
+    queue = []; 
+    updateDashboard();
+    res.json({ ok: true, msg: 'Semua antrean yang belum jalan dibatalkan.' });
 });
 
 app.post('/api/reset-stats', (req, res) => {
@@ -170,36 +188,75 @@ app.post('/api/reset-stats', (req, res) => {
     res.json({ ok: true, msg: 'Statistik Sukses & Gagal beserta foto berhasil disapu bersih!' });
 });
 
-// ... (Route override dan retry tetap sama, sesuaikan logika insert DB nya menggunakan prepared statement SQLite) ...
+app.post('/api/retry', (req, res) => {
+    const { filename } = req.body;
+    const sourcePath = path.join(GAGAL_DIR, filename);
+    const tempPath = path.join(UPLOAD_DIR, 'RETRY_' + filename);
+    
+    if (fs.existsSync(sourcePath)) {
+        fs.renameSync(sourcePath, tempPath);
+        queue.push({ path: tempPath, originalName: filename });
+        io.emit('log', { type: 'warn', msg: `🔄 Mencoba ulang: ${filename}` });
+        processQueue();
+    }
+    res.json({ ok: true });
+});
+
+app.post('/api/override', async (req, res) => {
+    const { filename, resiString } = req.body;
+    const resiArray = resiString.split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
+    const sourcePath = path.join(GAGAL_DIR, filename);
+    if (!fs.existsSync(sourcePath)) return res.status(404).json({ error: 'File tidak ditemukan' });
+
+    const dailyFolder = getDailyFolder();
+    await Promise.all(resiArray.map(async (resi) => {
+        const targetPath = path.join(dailyFolder, `${resi}.jpg`);
+        const fileSizeMB = fs.statSync(sourcePath).size / (1024 * 1024);
+        if (fileSizeMB > 2) await sharp(sourcePath).jpeg({ quality: 85 }).toFile(targetPath);
+        else fs.copyFileSync(sourcePath, targetPath);
+        
+        insertResi.run(filename, resi, 'Manual Override');
+    }));
+    
+    insertSession.run(filename);
+    if(fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath); 
+
+    io.emit('log', { type: 'success', msg: `🛠️ Manual: ${filename} -> ${resiArray.join(', ')}` });
+    updateDashboard();
+    res.json({ ok: true });
+});
 
 app.get('/api/export', async (req, res) => {
-    const allData = getAllSuccess.all(); // Ambil semua data dari SQLite
+    const allData = getAllSuccess.all();
     if (allData.length === 0) return res.status(400).send('Data kosong');
     
     const EXPORT_DIR = './manifests';
     if (!fs.existsSync(EXPORT_DIR)) fs.mkdirSync(EXPORT_DIR);
 
     const dateStr = new Date().toLocaleString('id-ID', { hour12: false }).replace(/[\/\s:]/g, '-');
-    let generatedFiles = [];
-
-    for (let i = 0; i < allData.length; i += 900) {
-        const chunk = allData.slice(i, i + 900);
-        const filename = `ManifesBotSavePod_${dateStr}_Part${Math.floor(i/900)+1}.xlsx`;
-        const workbook = new exceljs.Workbook();
-        const sheet = workbook.addWorksheet('Manifest');
-        sheet.columns = [
-            { header: 'No Resi', key: 'resi', width: 20 },
-            { header: 'File Asal', key: 'original_file', width: 30 },
-            { header: 'Keterangan', key: 'info', width: 20 }
-        ];
-        
-        chunk.forEach(data => sheet.addRow(data));
-        await workbook.xlsx.writeFile(path.join(EXPORT_DIR, filename));
-        generatedFiles.push(filename);
-    }
-    res.json({ ok: true, files: generatedFiles });
+    const filename = `Manifes_Bot_Save_Pod_${dateStr}_Lengkap.xlsx`;
+    
+    const workbook = new exceljs.Workbook();
+    const sheet = workbook.addWorksheet('Manifest');
+    
+    sheet.columns = [
+        { header: 'No Resi', key: 'resi', width: 25 },
+        { header: 'File Asal', key: 'original_file', width: 35 },
+        { header: 'Keterangan', key: 'info', width: 25 }
+    ];
+    
+    let count = 0;
+    allData.forEach(data => {
+        sheet.addRow(data);
+        count++;
+        if (count % 900 === 0) sheet.addRow({}); 
+    });
+    
+    await workbook.xlsx.writeFile(path.join(EXPORT_DIR, filename));
+    res.json({ ok: true, files: [filename] });
 });
 
+// --- MANUAL UPLOAD (FALLBACK VIA WEB) ---
 const storage = multer.diskStorage({
     destination: UPLOAD_DIR,
     filename: (req, file, cb) => cb(null, Date.now() + '_' + file.originalname)
@@ -219,4 +276,5 @@ app.post('/api/upload', upload.array('photos'), (req, res) => {
     res.json({ ok: true });
 });
 
+// --- JALANKAN SERVER ---
 httpServer.listen(31912, () => console.log('🚀 Server Aktif di http://localhost:31912'));
