@@ -1,4 +1,4 @@
-const sharp = require('sharp');
+const sharp = require('sharp'); // 👈 PASTIKAN BARIS INI ADA
 const fs = require('fs');
 
 const API_KEYS = ['K86974445588957', 'K83673440788957'];
