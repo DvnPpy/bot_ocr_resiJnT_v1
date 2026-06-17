@@ -1,3 +1,6 @@
+const sharp = require('sharp'); // 👈 PASTIKAN BARIS INI ADA
+const Tesseract = require('tesseract.js');
+
 const extractResiOffline = async (imagePath) => {
     const originalBuffer = await sharp(imagePath).toBuffer();
     let allFoundResis = new Set(); 
