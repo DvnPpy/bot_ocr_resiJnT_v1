@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Dashboard Bot Resi Offline</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📦</text></svg>">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root { --bg: #0f1419; --panel: #171c25; --border: #2a313d; --text: #e6edf3; --accent: #ffb454; --ok: #7fd962; --err: #ff6b6b; --warn: #ffd866;}
@@ -29,7 +30,11 @@
         .btn-warn { background: var(--warn); color: #000; }
         .btn-success { background: var(--ok); color: #000; }
         
-        .setup-box { border: 2px dashed var(--accent); padding: 15px; margin-bottom: 15px; border-radius: 8px; background: #1a1f29;}
+        /* Modifikasi Setup Box menjadi Collapsible yang elegan */
+        details.setup-box { border: 2px dashed var(--accent); padding: 15px; margin-bottom: 15px; border-radius: 8px; background: #1a1f29; transition: all 0.3s ease;}
+        details.setup-box summary { cursor: pointer; font-weight: bold; font-size: 16px; color: var(--accent); outline: none; user-select: none; }
+        details.setup-box summary:hover { opacity: 0.8; }
+        
         .disabled-area { opacity: 0.5; pointer-events: none; }
         
         .failed-item { display: flex; gap: 10px; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid var(--border); }
@@ -52,31 +57,34 @@
 
     <div class="main-area">
         <div class="box">
-            <div class="setup-box" id="setupBox">
-                <h3>⚙️ Panel Kontrol Mesin OCR</h3>
+            
+            <details class="setup-box" id="setupBox" open>
+                <summary>⚙️ Panel Kontrol Mesin OCR (Klik untuk Buka/Tutup)</summary>
                 
-                <div id="activeEngineInfo" class="active-badge"></div>
+                <div style="margin-top: 15px;">
+                    <div id="activeEngineInfo" class="active-badge"></div>
 
-                <label>Ganti Mesin OCR:</label>
-                <select id="engineSelect" onchange="toggleConcurrent()">
-                    <option value="" disabled selected>-- Pilih OCR Engine --</option>
-                    <option value="1">Engine 1 (Tesseract Offline - Cepat)</option>
-                    <option value="2">Engine 2 (OCR.space Online - Akurasi Tinggi)</option>
-                </select>
+                    <label>Ganti Mesin OCR:</label>
+                    <select id="engineSelect" onchange="toggleConcurrent()">
+                        <option value="" disabled selected>-- Pilih OCR Engine --</option>
+                        <option value="1">Engine 1 (Tesseract Offline - Cepat)</option>
+                        <option value="2">Engine 2 (OCR.space Online - Akurasi Tinggi)</option>
+                    </select>
 
-                <label style="margin-top:10px; display:block;">Kecepatan Proses:</label>
-                <select id="concurrentSelect">
-                    <option value="" disabled selected>-- Pilih Kecepatan --</option>
-                    <option value="1">1 Foto (Wajib untuk Engine 2 / Sangat Ringan)</option>
-                    <option value="3">3 Foto (Aman untuk Laptop Standar)</option>
-                    <option value="5">5 Foto (Cepat - Rekomendasi)</option>
-                    <option value="10">10 Foto (Tinggi - Butuh RAM Besar)</option>
-                    <option value="15">15 Foto (Sangat Berat - Hanya PC High-End)</option>
-                    <option value="20">20 Foto (Ekstrem - Awas PC Hang/Crash!)</option>
-                </select>
-                
-                <button class="btn-primary" onclick="updateSetup()" style="margin-top: 10px;">Simpan & Terapkan Pengaturan</button>
-            </div>
+                    <label style="margin-top:10px; display:block;">Kecepatan Proses:</label>
+                    <select id="concurrentSelect">
+                        <option value="" disabled selected>-- Pilih Kecepatan --</option>
+                        <option value="1">1 Foto (Wajib untuk Engine 2 / Sangat Ringan)</option>
+                        <option value="3">3 Foto (Aman untuk Laptop Standar)</option>
+                        <option value="5">5 Foto (Cepat - Rekomendasi)</option>
+                        <option value="10">10 Foto (Tinggi - Butuh RAM Besar)</option>
+                        <option value="15">15 Foto (Sangat Berat - Hanya PC High-End)</option>
+                        <option value="20">20 Foto (Ekstrem - Awas PC Hang/Crash!)</option>
+                    </select>
+                    
+                    <button class="btn-primary" onclick="updateSetup()" style="margin-top: 10px;">Simpan & Terapkan Pengaturan</button>
+                </div>
+            </details>
 
             <div id="uploadArea" class="disabled-area">
                 <input type="file" id="fileInput" multiple accept="image/*">
@@ -97,7 +105,7 @@
             </div>
 
             <h3 style="margin-top: 20px;">Tinjauan Manual (Gagal)</h3>
-            <div id="failedList" style="max-height: 250px; overflow-y: auto;"></div>
+            <div id="failedList" style="max-height: 450px; overflow-y: auto; padding-right: 5px;"></div>
         </div>
 
         <div class="box">
@@ -136,13 +144,16 @@
                 method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ max: finalMax, engine: parseInt(engine) })
             }).then(() => {
-                // Tampilkan Indikator Aktif
                 const infoBadge = document.getElementById('activeEngineInfo');
                 infoBadge.style.display = 'block';
                 const engineName = engine === '1' ? 'Engine 1 (Tesseract Offline)' : 'Engine 2 (OCR.space Online)';
                 infoBadge.innerHTML = `🟢 SEDANG AKTIF: <br> ${engineName} <br> Maksimal Proses: ${finalMax} Foto Bersamaan`;
                 
                 document.getElementById('uploadArea').classList.remove('disabled-area');
+                
+                // Menciutkan/menutup kotak setup secara otomatis setelah diklik simpan
+                document.getElementById('setupBox').removeAttribute('open');
+                
                 alert('Pengaturan Berhasil Diterapkan!');
             });
         }
