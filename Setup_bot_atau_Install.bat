@@ -1,89 +1,106 @@
 @echo off
 setlocal EnableDelayedExpansion
-title Setup Bot J&T Resi Offline
+title Setup Bot J&T Resi Offline v4.0
 cd /d "%~dp0"
 color 0A
 
 echo.
 echo  =====================================================
-echo   INSTALLER BOT RESI J^&T OFFLINE - AUTO SETUP v3.0
+echo   INSTALLER BOT RESI J^&T - AUTO SETUP v4.0
 echo  =====================================================
 echo.
 
 :: ═══════════════════════════════════════════════════════
-:: TAHAP 0 — CEK HAK ADMIN
+:: TAHAP 0 - CEK ADMIN, MINTA JIKA BELUM
 :: ═══════════════════════════════════════════════════════
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-    color 0E
-    echo  [!] Script ini butuh hak Administrator.
-    echo  [>] Meminta ulang izin Admin secara otomatis...
-    echo.
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
+    echo  [!] Membutuhkan hak Administrator. Meminta izin...
+    powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs -Wait"
     exit /b
 )
-echo  [V] Berjalan sebagai Administrator. Lanjut...
+echo  [V] Mode Administrator aktif.
 echo.
 
 :: ═══════════════════════════════════════════════════════
-:: TAHAP 1 — CEK DAN INSTALL NODE.JS LTS
+:: TAHAP 1 - INSTALL NODE.JS v22 LTS (PAKSA PAKAI WINGET/MSI)
 :: ═══════════════════════════════════════════════════════
-echo  [TAHAP 1/5] Memeriksa Node.js...
+echo  [TAHAP 1/6] Memastikan Node.js v22 LTS...
 
-node -v >nul 2>&1
-if %errorlevel% neq 0 (
-    echo  [!] Node.js tidak ditemukan. Mengunduh Node.js v22 LTS...
-    goto :install_node
+:: Cek apakah node v22 sudah ada di lokasi default
+set "NODE22_PATH=C:\Program Files\nodejs\node.exe"
+set "USE_NODE22=0"
+
+if exist "%NODE22_PATH%" (
+    for /f "tokens=*" %%v in ('"%NODE22_PATH%" -e "process.stdout.write(String(process.version.split(\".\")[0].replace(\"v\",\"\")))" 2^>nul') do set INST_VER=%%v
+    if !INST_VER! EQU 22 (
+        echo  [V] Node.js v22 sudah terinstal di Program Files.
+        set "USE_NODE22=1"
+    )
 )
 
-for /f "tokens=*" %%v in ('node -e "process.stdout.write(String(process.version.split(\".\")[0].replace(\"v\",\"\")))"') do set NODE_VER=%%v
-
-echo  [i] Node.js versi terdeteksi: v!NODE_VER!
-
-if !NODE_VER! GEQ 23 (
-    echo  [!] Node.js v!NODE_VER! terlalu baru ^(butuh v22 LTS^).
-    echo  [>] Mengunduh dan menginstal Node.js v22 LTS...
-    goto :install_node
-)
-if !NODE_VER! LSS 18 (
-    echo  [!] Node.js v!NODE_VER! terlalu lama ^(butuh v18 ke atas^).
-    echo  [>] Mengunduh dan menginstal Node.js v22 LTS...
-    goto :install_node
+if "!USE_NODE22!"=="0" (
+    echo  [>] Mengunduh Node.js v22.14.0 LTS...
+    curl -L --progress-bar -o "%TEMP%\node22_setup.msi" "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi"
+    if %errorlevel% neq 0 (
+        color 0C & echo  [X] Gagal unduh Node.js. Periksa internet. & pause & exit /b
+    )
+    echo  [>] Menginstal Node.js v22 LTS ^(silent^)...
+    msiexec /i "%TEMP%\node22_setup.msi" /qn /norestart ADDLOCAL=ALL
+    del "%TEMP%\node22_setup.msi" >nul 2>&1
+    echo  [V] Node.js v22 LTS terpasang!
 )
 
-echo  [V] Node.js v!NODE_VER! - Versi aman, lewati instalasi.
-goto :node_done
+:: PAKSA gunakan Node v22 dari Program Files untuk sesi ini
+set "PATH=C:\Program Files\nodejs;%PATH%"
 
-:install_node
-echo  [>] Mengunduh Node.js v22.14.0 LTS ^(mungkin beberapa menit^)...
-curl -L -o node_setup.msi "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi"
-if %errorlevel% neq 0 (
-    color 0C
-    echo  [X] Gagal mengunduh Node.js. Periksa koneksi internet.
-    pause & exit /b
-)
-echo  [>] Menginstal Node.js v22 LTS secara silent...
-msiexec /i node_setup.msi /qn /norestart ADDLOCAL=ALL
-del node_setup.msi
-:: Refresh PATH agar node langsung bisa dipakai
-set "PATH=%PATH%;C:\Program Files\nodejs"
-echo  [V] Node.js v22 LTS berhasil diinstal!
-
-:node_done
+:: Verifikasi
+for /f "tokens=*" %%v in ('"C:\Program Files\nodejs\node.exe" -e "process.stdout.write(process.version)" 2^>nul') do set ACTIVE_NODE=%%v
+echo  [i] Node.js aktif untuk sesi ini: !ACTIVE_NODE!
 echo.
 
 :: ═══════════════════════════════════════════════════════
-:: TAHAP 2 — CEK DAN INSTALL GIT
+:: TAHAP 2 - INSTALL VISUAL C++ BUILD TOOLS (untuk better-sqlite3)
 :: ═══════════════════════════════════════════════════════
-echo  [TAHAP 2/5] Memeriksa Git...
+echo  [TAHAP 2/6] Memeriksa Build Tools (C++ compiler)...
 
+:: Cek apakah cl.exe sudah ada (tanda Build Tools sudah terinstal)
+where cl.exe >nul 2>&1
+set BUILD_TOOLS_OK=%errorlevel%
+
+:: Cek via registry juga
+reg query "HKLM\SOFTWARE\Microsoft\VisualStudio\14.0" >nul 2>&1
+if %errorlevel% equ 0 set BUILD_TOOLS_OK=0
+reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0" >nul 2>&1
+if %errorlevel% equ 0 set BUILD_TOOLS_OK=0
+
+:: Cek folder MSVC
+if exist "C:\Program Files (x86)\Microsoft Visual Studio" set BUILD_TOOLS_OK=0
+if exist "C:\Program Files\Microsoft Visual Studio" set BUILD_TOOLS_OK=0
+
+if !BUILD_TOOLS_OK! equ 0 (
+    echo  [V] Visual C++ Build Tools sudah terdeteksi.
+) else (
+    echo  [!] Build Tools tidak ditemukan. Menginstal via npm...
+    echo  [i] Proses ini bisa memakan waktu 5-15 menit, mohon tunggu...
+    "C:\Program Files\nodejs\npm.cmd" install --global windows-build-tools --vs2019 2>nul
+    if !errorlevel! neq 0 (
+        "C:\Program Files\nodejs\npm.cmd" install --global @windows/build-tools 2>nul
+    )
+    echo  [V] Build Tools selesai diproses.
+)
+echo.
+
+:: ═══════════════════════════════════════════════════════
+:: TAHAP 3 - CEK DAN INSTALL GIT
+:: ═══════════════════════════════════════════════════════
+echo  [TAHAP 3/6] Memeriksa Git...
 git --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo  [!] Git tidak ditemukan. Mengunduh Git...
-    curl -L -o git_setup.exe "https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/Git-2.45.1-64-bit.exe"
-    echo  [>] Menginstal Git...
-    start /wait git_setup.exe /SILENT /NORESTART
-    del git_setup.exe
+    echo  [>] Mengunduh dan menginstal Git...
+    curl -L --progress-bar -o "%TEMP%\git_setup.exe" "https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/Git-2.45.1-64-bit.exe"
+    start /wait "%TEMP%\git_setup.exe" /SILENT /NORESTART /COMPONENTS="icons,ext\reg\shellhere,assoc,assoc_sh"
+    del "%TEMP%\git_setup.exe" >nul 2>&1
     set "PATH=%PATH%;C:\Program Files\Git\cmd"
     echo  [V] Git berhasil diinstal!
 ) else (
@@ -92,102 +109,102 @@ if %errorlevel% neq 0 (
 echo.
 
 :: ═══════════════════════════════════════════════════════
-:: TAHAP 3 — PULL REPO DARI GITHUB
+:: TAHAP 4 - PULL DARI GITHUB
 :: ═══════════════════════════════════════════════════════
-echo  [TAHAP 3/5] Mengambil data terbaru dari GitHub...
-
+echo  [TAHAP 4/6] Mengambil data terbaru dari GitHub...
 git init >nul 2>&1
 git remote remove origin >nul 2>&1
 git remote add origin https://github.com/DvnPpy/bot_ocr_resiJnT_v1.git >nul 2>&1
 git fetch --all >nul 2>&1
 git reset --hard origin/main >nul 2>&1
-
-if %errorlevel% neq 0 (
-    echo  [!] Gagal pull dari GitHub. Lanjut dengan file lokal yang ada.
+if %errorlevel% equ 0 (
+    echo  [V] Data terbaru berhasil diambil.
 ) else (
-    echo  [V] Data terbaru berhasil diambil dari GitHub.
+    echo  [!] Gagal pull GitHub. Lanjut dengan file lokal.
 )
 echo.
 
 :: ═══════════════════════════════════════════════════════
-:: TAHAP 4 — INSTALL MODUL NPM
+:: TAHAP 5 - INSTALL MODUL NPM
 :: ═══════════════════════════════════════════════════════
-echo  [TAHAP 4/5] Menginstal modul Node.js...
+echo  [TAHAP 5/6] Menginstal modul Node.js...
 
-:: Bersihkan node_modules lama jika ada agar tidak konflik
+:: Hapus node_modules lama agar bersih
 if exist "node_modules\" (
     echo  [>] Menghapus node_modules lama...
-    rmdir /s /q node_modules
+    rmdir /s /q node_modules >nul 2>&1
+    :: Jika rmdir gagal (EPERM), coba via PowerShell
+    if exist "node_modules\" (
+        powershell -Command "Remove-Item -Recurse -Force '.\node_modules' -ErrorAction SilentlyContinue"
+    )
 )
 
-:: Install semua modul
-call npm install
+:: Set npm untuk pakai node v22
+set "npm_config_python="
+"C:\Program Files\nodejs\npm.cmd" install
+
 if %errorlevel% neq 0 (
-    color 0C
     echo.
-    echo  =====================================================
-    echo  [X] npm install GAGAL!
+    echo  [!] npm install biasa gagal. Mencoba fallback dengan --ignore-scripts...
+    "C:\Program Files\nodejs\npm.cmd" install --ignore-scripts
+    
+    if !errorlevel! neq 0 (
+        color 0C
+        echo.
+        echo  [X] Semua metode instalasi gagal.
+        echo  [>] Hubungi developer dengan menyertakan log di atas.
+        pause & exit /b
+    )
+    
     echo.
-    echo  Coba jalankan perintah ini di CMD folder bot:
-    echo    npm install --ignore-scripts
-    echo.
-    echo  Lalu jalankan Start_bot.bat untuk mencoba jalan.
-    echo  =====================================================
-    pause
-    exit /b
+    echo  [!] Terinstal dengan --ignore-scripts.
+    echo  [i] better-sqlite3 mungkin tidak berfungsi.
+    echo  [>] Bot akan berjalan TANPA fitur database native.
+    echo  [>] Lanjutkan dengan mode terbatas...
 )
-echo  [V] Semua modul berhasil diinstal!
+
+echo  [V] Modul berhasil diinstal!
 echo.
 
 :: ═══════════════════════════════════════════════════════
-:: TAHAP 5 — BUAT FILE KONFIGURASI
+:: TAHAP 6 - BUAT FILE DAN FOLDER PENDUKUNG
 :: ═══════════════════════════════════════════════════════
-echo  [TAHAP 5/5] Menyiapkan file konfigurasi...
+echo  [TAHAP 6/6] Menyiapkan folder dan konfigurasi...
 
-:: Buat .env dari template jika belum ada
+for %%d in (DROP_ZONE POD_GAGAL temp_uploads pod_storage logs manifests public) do (
+    if not exist "%%d\" mkdir "%%d"
+)
+
+if exist "index.html" if not exist "public\index.html" (
+    copy "index.html" "public\index.html" >nul
+    echo  [i] index.html dipindahkan ke public/.
+)
+
 if not exist ".env" (
     if exist ".env.example" (
         copy ".env.example" ".env" >nul
-        echo  [V] File .env berhasil dibuat dari template.
     ) else (
-        :: Buat .env langsung jika .env.example tidak ada
-        echo # API Key OCR.space untuk Engine 2 > .env
-        echo # Daftar gratis di https://ocr.space/ocrapi >> .env
-        echo OCR_API_KEY_1=ISI_API_KEY_ANDA_DISINI >> .env
-        echo OCR_API_KEY_2= >> .env
-        echo  [V] File .env berhasil dibuat.
+        (
+            echo # Salin file ini dan isi API Key OCR.space Anda
+            echo # Daftar gratis di: https://ocr.space/ocrapi
+            echo OCR_API_KEY_1=ISI_DISINI
+            echo OCR_API_KEY_2=
+        ) > .env
     )
+    echo  [V] File .env berhasil dibuat.
 ) else (
     echo  [V] File .env sudah ada.
 )
 
-:: Buat folder-folder yang dibutuhkan bot
-if not exist "DROP_ZONE\"    mkdir DROP_ZONE
-if not exist "POD_GAGAL\"    mkdir POD_GAGAL
-if not exist "temp_uploads\" mkdir temp_uploads
-if not exist "pod_storage\"  mkdir pod_storage
-if not exist "logs\"         mkdir logs
-if not exist "manifests\"    mkdir manifests
-if not exist "public\"       mkdir public
-
-:: Pindahkan index.html ke public jika masih di root
-if exist "index.html" (
-    if not exist "public\index.html" (
-        copy "index.html" "public\index.html" >nul
-        echo  [i] index.html dipindahkan ke folder public^/.
-    )
-)
-
 echo.
 echo  =====================================================
-echo  [SELESAI] SETUP BERHASIL SEMPURNA!
+echo   SETUP SELESAI!
 echo.
-echo  Langkah selanjutnya:
-echo   1. ^(Opsional^) Buka file ".env" dengan Notepad
-echo      dan isi API Key jika ingin pakai Engine 2
-echo      ^(OCR.space^). Engine 1 tidak butuh API Key.
+echo   Langkah selanjutnya:
+echo   1. [Opsional] Edit file ".env" isi API Key
+echo      jika ingin pakai Engine 2 ^(OCR.space^)
 echo.
-echo   2. Jalankan "Start_bot.bat" untuk memulai bot.
+echo   2. Jalankan "Start_bot.bat" untuk mulai bot
 echo  =====================================================
 echo.
 pause
