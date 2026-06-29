@@ -1,17 +1,17 @@
 @echo off
 setlocal EnableDelayedExpansion
-title Setup Bot J&T Resi Offline v4.0
+title Setup Bot J&T Resi Offline v4.0 - Fixed
 cd /d "%~dp0"
 color 0A
 
 echo.
 echo  =====================================================
-echo   INSTALLER BOT RESI J^&T - AUTO SETUP v4.0
+echo   INSTALLER BOT RESI J^&T - AUTO SETUP v4.0 (FIXED)
 echo  =====================================================
 echo.
 
 :: ═══════════════════════════════════════════════════════
-:: TAHAP 0 - CEK ADMIN, MINTA JIKA BELUM
+:: TAHAP 0 - CEK ADMIN
 :: ═══════════════════════════════════════════════════════
 net session >nul 2>&1
 if %errorlevel% neq 0 (
@@ -23,17 +23,16 @@ echo  [V] Mode Administrator aktif.
 echo.
 
 :: ═══════════════════════════════════════════════════════
-:: TAHAP 1 - INSTALL NODE.JS v22 LTS (PAKSA PAKAI WINGET/MSI)
+:: TAHAP 1 - INSTALL NODE.JS v22 LTS
 :: ═══════════════════════════════════════════════════════
 echo  [TAHAP 1/6] Memastikan Node.js v22 LTS...
 
-:: Cek apakah node v22 sudah ada di lokasi default
 set "NODE22_PATH=C:\Program Files\nodejs\node.exe"
 set "USE_NODE22=0"
 
 if exist "%NODE22_PATH%" (
     for /f "tokens=*" %%v in ('"%NODE22_PATH%" -e "process.stdout.write(String(process.version.split(\".\")[0].replace(\"v\",\"\")))" 2^>nul') do set INST_VER=%%v
-    if !INST_VER! EQU 22 (
+    if "!INST_VER!" EQU "22" (
         echo  [V] Node.js v22 sudah terinstal di Program Files.
         set "USE_NODE22=1"
     )
@@ -45,49 +44,37 @@ if "!USE_NODE22!"=="0" (
     if %errorlevel% neq 0 (
         color 0C & echo  [X] Gagal unduh Node.js. Periksa internet. & pause & exit /b
     )
-    echo  [>] Menginstal Node.js v22 LTS ^(silent^)...
+    echo  [>] Menginstal Node.js v22 LTS (silent)...
     msiexec /i "%TEMP%\node22_setup.msi" /qn /norestart ADDLOCAL=ALL
     del "%TEMP%\node22_setup.msi" >nul 2>&1
     echo  [V] Node.js v22 LTS terpasang!
 )
 
-:: PAKSA gunakan Node v22 dari Program Files untuk sesi ini
 set "PATH=C:\Program Files\nodejs;%PATH%"
 
-:: Verifikasi
 for /f "tokens=*" %%v in ('"C:\Program Files\nodejs\node.exe" -e "process.stdout.write(process.version)" 2^>nul') do set ACTIVE_NODE=%%v
 echo  [i] Node.js aktif untuk sesi ini: !ACTIVE_NODE!
 echo.
 
 :: ═══════════════════════════════════════════════════════
-:: TAHAP 2 - INSTALL VISUAL C++ BUILD TOOLS (untuk better-sqlite3)
+:: TAHAP 2 - INSTALL VISUAL C++ BUILD TOOLS (FIXED syntax & modern node-gyp approach)
 :: ═══════════════════════════════════════════════════════
-echo  [TAHAP 2/6] Memeriksa Build Tools (C++ compiler)...
+echo  [TAHAP 2/6] Memeriksa Build Tools (C++ compiler untuk better-sqlite3)...
 
-:: Cek apakah cl.exe sudah ada (tanda Build Tools sudah terinstal)
-where cl.exe >nul 2>&1
-set BUILD_TOOLS_OK=%errorlevel%
+set BUILD_TOOLS_OK=1
 
-:: Cek via registry juga
-reg query "HKLM\SOFTWARE\Microsoft\VisualStudio\14.0" >nul 2>&1
-if %errorlevel% equ 0 set BUILD_TOOLS_OK=0
-reg query "HKLM\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0" >nul 2>&1
-if %errorlevel% equ 0 set BUILD_TOOLS_OK=0
-
-:: Cek folder MSVC
+:: Metode Deteksi Modern Visual Studio / Build Tools
 if exist "C:\Program Files (x86)\Microsoft Visual Studio" set BUILD_TOOLS_OK=0
 if exist "C:\Program Files\Microsoft Visual Studio" set BUILD_TOOLS_OK=0
+reg query "HKLM\SOFTWARE\Microsoft\VisualStudio\SxS\VS7" >nul 2>&1 && set BUILD_TOOLS_OK=0
 
-if !BUILD_TOOLS_OK! equ 0 (
+if !BUILD_TOOLS_OK! EQU 0 (
     echo  [V] Visual C++ Build Tools sudah terdeteksi.
 ) else (
-    echo  [!] Build Tools tidak ditemukan. Menginstal via npm...
-    echo  [i] Proses ini bisa memakan waktu 5-15 menit, mohon tunggu...
-    "C:\Program Files\nodejs\npm.cmd" install --global windows-build-tools --vs2019 2>nul
-    if !errorlevel! neq 0 (
-        "C:\Program Files\nodejs\npm.cmd" install --global @windows/build-tools 2>nul
-    )
-    echo  [V] Build Tools selesai diproses.
+    echo  [!] Build Tools tidak ditemukan. Menyiapkan instalasi native-tools via npm...
+    echo  [i] Proses kompilasi akan otomatis diatur oleh node-gyp modern pada Node v22.
+    echo  [>] Mengunduh komponen build minimal...
+    powershell -Command "Start-Process cmd -ArgumentList '/c npm install --global --production windows-build-tools' -Verb RunAs -Wait" >nul 2>&1
 )
 echo.
 
@@ -125,42 +112,39 @@ if %errorlevel% equ 0 (
 echo.
 
 :: ═══════════════════════════════════════════════════════
-:: TAHAP 5 - INSTALL MODUL NPM
+:: TAHAP 5 - INSTALL MODUL NPM (FIXED Rebuild untuk Node v22)
 :: ═══════════════════════════════════════════════════════
 echo  [TAHAP 5/6] Menginstal modul Node.js...
 
-:: Hapus node_modules lama agar bersih
 if exist "node_modules\" (
-    echo  [>] Menghapus node_modules lama...
+    echo  [>] Menghapus node_modules lama untuk menghindari konflik versi...
     rmdir /s /q node_modules >nul 2>&1
-    :: Jika rmdir gagal (EPERM), coba via PowerShell
     if exist "node_modules\" (
         powershell -Command "Remove-Item -Recurse -Force '.\node_modules' -ErrorAction SilentlyContinue"
     )
 )
 
-:: Set npm untuk pakai node v22
-set "npm_config_python="
-"C:\Program Files\nodejs\npm.cmd" install
+:: Jalankan instalasi bersih dengan build binaries library native
+call "C:\Program Files\nodejs\npm.cmd" install
 
 if %errorlevel% neq 0 (
     echo.
-    echo  [!] npm install biasa gagal. Mencoba fallback dengan --ignore-scripts...
-    "C:\Program Files\nodejs\npm.cmd" install --ignore-scripts
+    echo  [!] npm install standar gagal. Memulai regenerasi bindings pre-build...
+    call "C:\Program Files\nodejs\npm.cmd" install --build-from-source
     
     if !errorlevel! neq 0 (
-        color 0C
-        echo.
-        echo  [X] Semua metode instalasi gagal.
-        echo  [>] Hubungi developer dengan menyertakan log di atas.
-        pause & exit /b
+        echo  [!] Mencoba fallback dengan opsi --ignore-scripts...
+        call "C:\Program Files\nodejs\npm.cmd" install --ignore-scripts
+        
+        if !errorlevel! neq 0 (
+            color 0C
+            echo.
+            echo  [X] Semua metode instalasi gagal. Silakan periksa koneksi atau hak akses folder.
+            pause & exit /b
+        )
+        echo  [!] Terinstal dengan bimbingan --ignore-scripts.
+        echo  [i] Catatan: Jika better-sqlite3 bermasalah, database tidak akan tersimpan secara native.
     )
-    
-    echo.
-    echo  [!] Terinstal dengan --ignore-scripts.
-    echo  [i] better-sqlite3 mungkin tidak berfungsi.
-    echo  [>] Bot akan berjalan TANPA fitur database native.
-    echo  [>] Lanjutkan dengan mode terbatas...
 )
 
 echo  [V] Modul berhasil diinstal!
@@ -177,7 +161,7 @@ for %%d in (DROP_ZONE POD_GAGAL temp_uploads pod_storage logs manifests public) 
 
 if exist "index.html" if not exist "public\index.html" (
     copy "index.html" "public\index.html" >nul
-    echo  [i] index.html dipindahkan ke public/.
+    echo  [i] index.html berhasil ditempatkan di folder public/.
 )
 
 if not exist ".env" (
@@ -201,10 +185,10 @@ echo  =====================================================
 echo   SETUP SELESAI!
 echo.
 echo   Langkah selanjutnya:
-echo   1. [Opsional] Edit file ".env" isi API Key
-echo      jika ingin pakai Engine 2 ^(OCR.space^)
+echo   1. [Opsional] Edit file ".env" dan isikan API Key
+echo      jika ingin mengaktifkan Engine 2 (OCR.space)
 echo.
-echo   2. Jalankan "Start_bot.bat" untuk mulai bot
+echo   2. Jalankan "Start_bot.bat" untuk memulai bot
 echo  =====================================================
 echo.
 pause
