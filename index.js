@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
@@ -9,7 +10,6 @@ const sharp = require('sharp');
 const Database = require('better-sqlite3');
 const chokidar = require('chokidar');
 
-// Import Kedua Engine OCR
 const { extractResiOffline } = require('./ocrEngine');
 const { extractResiOcrSpace } = require('./ocrEngine2');
 
@@ -24,18 +24,18 @@ app.use('/gagal', express.static('POD_GAGAL'));
 const UPLOAD_DIR = './temp_uploads';
 const GAGAL_DIR = './POD_GAGAL';
 const DROP_ZONE = './DROP_ZONE';
-const LOG_DIR = './logs'; 
+const LOG_DIR = './logs';
 
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(GAGAL_DIR)) fs.mkdirSync(GAGAL_DIR, { recursive: true });
 if (!fs.existsSync(DROP_ZONE)) fs.mkdirSync(DROP_ZONE, { recursive: true });
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
 
-// Sistem Log
+// ─── Sistem Log ────────────────────────────────────────────────────────────────
 const writeLog = (type, msg) => {
     const now = new Date();
-    const dateStr = now.toISOString().split('T')[0]; 
-    const timeStr = now.toTimeString().split(' ')[0]; 
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().split(' ')[0];
     const logFile = path.join(LOG_DIR, `bot_log_${dateStr}.txt`);
     const logMessage = `[${timeStr}] [${type.toUpperCase()}] ${msg}\n`;
     fs.appendFileSync(logFile, logMessage);
@@ -43,7 +43,7 @@ const writeLog = (type, msg) => {
     console.log(logMessage.trim());
 };
 
-// Setup SQLite (Lebih Kuat dari JSON)
+// ─── Database SQLite ────────────────────────────────────────────────────────────
 const db = new Database('database.db');
 db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (filename TEXT PRIMARY KEY);
@@ -55,45 +55,50 @@ db.exec(`
     );
 `);
 
-const insertSession = db.prepare('INSERT OR IGNORE INTO sessions (filename) VALUES (?)');
-const checkSession = db.prepare('SELECT filename FROM sessions WHERE filename = ?');
-const insertResi = db.prepare('INSERT OR IGNORE INTO success_data (original_file, resi, info) VALUES (?, ?, ?)');
-const countSuccess = db.prepare('SELECT COUNT(*) as total FROM success_data');
-const getAllSuccess = db.prepare('SELECT original_file, resi, info FROM success_data');
-const deleteAllSuccess = db.prepare('DELETE FROM success_data');
+const insertSession  = db.prepare('INSERT OR IGNORE INTO sessions (filename) VALUES (?)');
+const checkSession   = db.prepare('SELECT filename FROM sessions WHERE filename = ?');
+const insertResi     = db.prepare('INSERT OR IGNORE INTO success_data (original_file, resi, info) VALUES (?, ?, ?)');
+const countSuccess   = db.prepare('SELECT COUNT(*) as total FROM success_data');
+const getAllSuccess   = db.prepare('SELECT original_file, resi, info FROM success_data');
+const deleteAllSuccess  = db.prepare('DELETE FROM success_data');
 const deleteAllSessions = db.prepare('DELETE FROM sessions');
 
+// ─── State Global ───────────────────────────────────────────────────────────────
 let queue = [];
 let activeTask = 0;
-let MAX_CONCURRENT = 3; // Default dibuat aman
+let failedCount = 0; // FIX: Counter in-memory agar tidak perlu readdirSync tiap update
+let MAX_CONCURRENT = 3;
 let SELECTED_ENGINE = 1;
 
-chokidar.watch(DROP_ZONE, {
-    ignored: /(^|[\/\\])\../,
-    persistent: true,
-    awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 }
-}).on('add', (filePath) => {
-    const filename = path.basename(filePath);
-    if (!/\.(jpg|jpeg|png)$/i.test(filename)) return;
-    if (checkSession.get(filename)) {
-        writeLog('warn', `⚠️ Abaikan duplikat dari folder: ${filename}`);
-        try { fs.unlinkSync(filePath); } catch(e) {}
-        return;
-    }
-    queue.push({ path: filePath, originalName: filename });
-    for (let i = activeTask; i < MAX_CONCURRENT; i++) processQueue();
-    updateDashboard();
-});
-
+// FIX: Cache folder harian agar tidak dibuat ulang setiap task
+let _dailyFolderCache = { date: '', path: '' };
 const getDailyFolder = () => {
     const STORAGE_DIR = './pod_storage';
     if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true });
+
     const d = new Date();
     const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
-    const folderPath = path.join(STORAGE_DIR, `POD_${String(d.getDate()).padStart(2, '0')}_${bulan[d.getMonth()]}_${d.getFullYear()}`);
-    if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
-    return folderPath;
+    const todayKey = `${d.getDate()}_${d.getMonth()}_${d.getFullYear()}`;
+
+    if (_dailyFolderCache.date !== todayKey) {
+        const folderName = `POD_${String(d.getDate()).padStart(2, '0')}_${bulan[d.getMonth()]}_${d.getFullYear()}`;
+        const folderPath = path.join(STORAGE_DIR, folderName);
+        if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
+        _dailyFolderCache = { date: todayKey, path: folderPath };
+    }
+
+    return _dailyFolderCache.path;
 };
+
+// Inisialisasi failedCount dari kondisi folder saat startup
+const initFailedCount = () => {
+    try {
+        failedCount = fs.readdirSync(GAGAL_DIR).filter(f => f !== '.gitkeep').length;
+    } catch (e) {
+        failedCount = 0;
+    }
+};
+initFailedCount();
 
 const updateDashboard = () => {
     const lifetimeCount = countSuccess.get().total;
@@ -101,11 +106,14 @@ const updateDashboard = () => {
         queue: queue.length,
         active: activeTask,
         success: lifetimeCount,
-        failed: fs.readdirSync(GAGAL_DIR).filter(f => f !== '.gitkeep').length,
+        failed: failedCount, // FIX: Pakai counter in-memory, bukan readdirSync
         lifetime: lifetimeCount
     });
 };
 
+// ─── Proses Queue ───────────────────────────────────────────────────────────────
+// FIX: Hilangkan loop for yang menyebabkan race condition.
+// Rekursi di blok finally sudah cukup untuk memicu task berikutnya.
 const processQueue = async () => {
     if (activeTask >= MAX_CONCURRENT || queue.length === 0) {
         updateDashboard();
@@ -117,7 +125,7 @@ const processQueue = async () => {
 
     try {
         writeLog('info', `⚙️ Proses [Engine ${SELECTED_ENGINE}]: ${task.originalName}...`);
-        
+
         let result;
         if (SELECTED_ENGINE === 1) {
             result = await extractResiOffline(task.path);
@@ -137,14 +145,15 @@ const processQueue = async () => {
                 }
                 insertResi.run(task.originalName, resi, result.scenario);
             }));
-            
+
             insertSession.run(task.originalName);
             writeLog('success', `✅ Sukses: ${task.originalName} -> ${result.resis.join(', ')}`);
-            if (fs.existsSync(task.path)) fs.unlinkSync(task.path); 
+            if (fs.existsSync(task.path)) fs.unlinkSync(task.path);
         } else {
             if (fs.existsSync(task.path)) {
                 const targetPath = path.join(GAGAL_DIR, task.originalName);
                 fs.renameSync(task.path, targetPath);
+                failedCount++; // FIX: Naikan counter saat ada yang gagal
             }
             writeLog('error', `❌ Gagal: ${task.originalName}`);
             io.emit('new_failed', { filename: task.originalName });
@@ -153,10 +162,37 @@ const processQueue = async () => {
         writeLog('error', `🚨 Error Sistem: ${task.originalName} - ${err.message}`);
     } finally {
         activeTask--;
-        processQueue();
+        updateDashboard();
+        processQueue(); // Lanjutkan task berikutnya dari sini
     }
 };
 
+// Fungsi pembantu untuk memulai proses queue secara aman
+// FIX: Panggil sekali saja untuk setiap "slot" yang tersedia, tanpa loop ganda
+const kickQueue = () => {
+    const slots = MAX_CONCURRENT - activeTask;
+    for (let i = 0; i < slots; i++) processQueue();
+};
+
+// ─── Chokidar DROP_ZONE Watcher ─────────────────────────────────────────────────
+chokidar.watch(DROP_ZONE, {
+    ignored: /(^|[\/\\])\../,
+    persistent: true,
+    awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 }
+}).on('add', (filePath) => {
+    const filename = path.basename(filePath);
+    if (!/\.(jpg|jpeg|png)$/i.test(filename)) return;
+    if (checkSession.get(filename)) {
+        writeLog('warn', `⚠️ Abaikan duplikat dari folder: ${filename}`);
+        try { fs.unlinkSync(filePath); } catch (e) {}
+        return;
+    }
+    queue.push({ path: filePath, originalName: filename });
+    kickQueue(); // FIX: Pakai kickQueue agar slot dihitung dengan benar
+    updateDashboard();
+});
+
+// ─── API Routes ─────────────────────────────────────────────────────────────────
 app.post('/api/set-setup', (req, res) => {
     SELECTED_ENGINE = req.body.engine || 1;
     MAX_CONCURRENT = SELECTED_ENGINE === 2 ? 1 : (req.body.max || 10);
@@ -171,8 +207,8 @@ app.post('/api/clear-memory', (req, res) => {
 });
 
 app.post('/api/cancel-queue', (req, res) => {
-    queue.forEach(q => { if(fs.existsSync(q.path)) fs.unlinkSync(q.path); });
-    queue = []; 
+    queue.forEach(q => { if (fs.existsSync(q.path)) fs.unlinkSync(q.path); });
+    queue = [];
     updateDashboard();
     writeLog('warn', '[SISTEM] Semua antrean dibatalkan.');
     res.json({ ok: true, msg: 'Semua antrean dibatalkan.' });
@@ -185,6 +221,7 @@ app.post('/api/reset-stats', (req, res) => {
         const filePath = path.join(GAGAL_DIR, file);
         if (fs.lstatSync(filePath).isFile()) { try { fs.unlinkSync(filePath); } catch (e) {} }
     });
+    failedCount = 0; // FIX: Reset counter
     updateDashboard();
     res.json({ ok: true, msg: 'Statistik Sukses & Gagal berhasil dihapus!' });
 });
@@ -195,9 +232,10 @@ app.post('/api/retry', (req, res) => {
     const tempPath = path.join(UPLOAD_DIR, 'RETRY_' + filename);
     if (fs.existsSync(sourcePath)) {
         fs.renameSync(sourcePath, tempPath);
+        failedCount = Math.max(0, failedCount - 1); // FIX: Kurangi counter saat di-retry
         queue.push({ path: tempPath, originalName: filename });
         writeLog('warn', `🔄 Mencoba ulang: ${filename}`);
-        processQueue();
+        kickQueue();
     }
     res.json({ ok: true });
 });
@@ -217,7 +255,10 @@ app.post('/api/override', async (req, res) => {
         insertResi.run(filename, resi, 'Manual Override');
     }));
     insertSession.run(filename);
-    if(fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath); 
+    if (fs.existsSync(sourcePath)) {
+        fs.unlinkSync(sourcePath);
+        failedCount = Math.max(0, failedCount - 1); // FIX: Kurangi counter setelah override
+    }
     writeLog('success', `🛠️ Override Manual: ${filename} -> ${resiArray.join(', ')}`);
     updateDashboard();
     res.json({ ok: true });
@@ -226,12 +267,12 @@ app.post('/api/override', async (req, res) => {
 app.get('/api/export', async (req, res) => {
     const allData = getAllSuccess.all();
     if (allData.length === 0) return res.status(400).send('Data kosong');
-    
+
     const EXPORT_DIR = './manifests';
     if (!fs.existsSync(EXPORT_DIR)) fs.mkdirSync(EXPORT_DIR);
     const dateStr = new Date().toLocaleString('id-ID', { hour12: false }).replace(/[\/\s:]/g, '-');
     const filename = `Manifes_Bot_Save_Pod_${dateStr}.xlsx`;
-    
+
     const workbook = new exceljs.Workbook();
     const sheet = workbook.addWorksheet('Manifest');
     sheet.columns = [
@@ -243,26 +284,33 @@ app.get('/api/export', async (req, res) => {
     allData.forEach(data => {
         sheet.addRow(data);
         count++;
-        if (count % 900 === 0) sheet.addRow({}); 
+        if (count % 900 === 0) sheet.addRow({});
     });
-    
+
     await workbook.xlsx.writeFile(path.join(EXPORT_DIR, filename));
     res.json({ ok: true, files: [filename] });
 });
 
-const storage = multer.diskStorage({ destination: UPLOAD_DIR, filename: (req, file, cb) => cb(null, Date.now() + '_' + file.originalname) });
+const storage = multer.diskStorage({
+    destination: UPLOAD_DIR,
+    filename: (req, file, cb) => cb(null, Date.now() + '_' + file.originalname)
+});
 const upload = multer({ storage });
+
 app.post('/api/upload', upload.array('photos'), (req, res) => {
     req.files.forEach(file => {
         if (checkSession.get(file.originalname)) {
             writeLog('warn', `⚠️ Abaikan duplikat via Web: ${file.originalname}`);
-            if (fs.existsSync(file.path)) fs.unlinkSync(file.path); 
-        } else queue.push({ path: file.path, originalName: file.originalname });
+            if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        } else {
+            queue.push({ path: file.path, originalName: file.originalname });
+        }
     });
-    for (let i = activeTask; i < MAX_CONCURRENT; i++) processQueue();
+    kickQueue(); // FIX: Pakai kickQueue
     res.json({ ok: true });
 });
 
+// ─── Start Server ────────────────────────────────────────────────────────────────
 httpServer.listen(31912, () => {
     console.log('🚀 Server Aktif di http://localhost:31912');
     writeLog('info', '[SISTEM] Server Bot Dinyalakan.');
