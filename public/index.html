@@ -147,12 +147,15 @@
             }).then(() => {
                 const infoBadge = document.getElementById('activeEngineInfo');
                 infoBadge.style.display = 'block';
-                const engineName = engine === '1' ? 'Engine 1 (Tesseract Offline)' : 'Engine 2 (OCR.space Online)';
+                
+                let engineName = '';
+                if (engine === '1') engineName = 'Engine 1 (Tesseract Offline)';
+                else if (engine === '2') engineName = 'Engine 2 (OCR.space Online)';
+                else if (engine === '3') engineName = 'Engine 3 (Lensa Mikro & No Skip)';
+                
                 infoBadge.innerHTML = `🟢 SEDANG AKTIF: <br> ${engineName} <br> Maksimal Proses: ${finalMax} Foto Bersamaan`;
                 
                 document.getElementById('uploadArea').classList.remove('disabled-area');
-                
-                // Menciutkan/menutup kotak setup secara otomatis setelah diklik simpan
                 document.getElementById('setupBox').removeAttribute('open');
                 
                 alert('Pengaturan Berhasil Diterapkan!');
