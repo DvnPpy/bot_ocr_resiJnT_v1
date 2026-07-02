@@ -1,6 +1,6 @@
 @echo off
 :: ===================================================
-:: SISTEM ANTI-CLOSE (Mencegah CMD Tertutup Otomatis)
+:: SISTEM ANTI-CLOSE & AUTO-INSTALLER (ALL-IN-ONE)
 :: ===================================================
 if "%~1"=="-anti-close" goto :main_script
 cmd /k "%~f0" -anti-close
@@ -12,36 +12,43 @@ cd /d "%~dp0"
 color 0A
 
 echo ===================================================
-echo  SISTEM RUNNER ^& AUTO-UPDATE BOT RESI J^&T
+echo  SISTEM RUNNER, AUTO-INSTALL, ^& AUTO-UPDATE
 echo ===================================================
 echo.
 
-:: 1. Proteksi Awal: Cek Mesin NPM
+:: 1. AUTO-INSTALLER (Sistem Perbaikan Mandiri)
+echo [^>] Memeriksa kelengkapan mesin Node.js...
 if not exist "node_modules\" (
-    color 0C
-    echo [X] ERROR: Folder "node_modules" tidak ditemukan!
-    echo Silakan jalankan installer/setup terlebih dahulu.
+    color 0E
+    echo [!] Folder node_modules belum ada atau terhapus.
+    echo [^>] Menjalankan INSTALASI OTOMATIS sekarang... -Mohon tunggu-
+    
+    call npm install
+    call npm install dotenv better-sqlite3 chokidar sharp exceljs
+    
+    color 0A
+    echo [V] Instalasi modul selesai! Sistem telah diperbaiki.
     echo.
-    pause
-    exit /b
+) else (
+    echo [V] Modul NPM sudah lengkap dan terpasang.
 )
 
-:: 2. Proteksi Kedua: Cek Kunci API OCR
+:: 2. Proteksi Kunci API OCR.space
 if not exist ".env" (
     color 0E
     echo [!] PERINGATAN: File .env tidak ditemukan!
     echo Mesin Engine 2 tidak akan bisa digunakan tanpa API Key.
-    echo Pastikan file .env sudah disiapkan.
     echo.
 )
 
-:: 3. Fitur Auto-Update
+:: 3. Fitur Auto-Update dari GitHub
 echo [^>] Memeriksa pembaruan sistem di GitHub...
 git remote add origin https://github.com/DvnPpy/bot_ocr_resiJnT_v1.git >nul 2>&1
 git fetch origin main >nul 2>&1
 
+:: Menghapus tanda kurung jebakan agar tidak crash
 if %errorlevel% neq 0 (
-    echo [!] Gagal terhubung ke GitHub (Mungkin sedang offline).
+    echo [!] Gagal terhubung ke GitHub - Mungkin jaringan sedang offline.
     echo [^>] Melanjutkan dengan versi mesin lokal...
     goto :start_bot
 )
@@ -49,7 +56,7 @@ if %errorlevel% neq 0 (
 echo [^>] Menyinkronkan data terbaru...
 git reset --hard origin/main >nul 2>&1
 
-echo [^>] Memeriksa modul NPM (Silakan tunggu sebentar)...
+echo [^>] Memeriksa modul NPM tambahan - Silakan tunggu...
 call npm install >nul 2>&1
 echo [V] Mesin bot menggunakan versi paling mutakhir!
 
@@ -72,7 +79,11 @@ echo.
 echo ===================================================
 echo [!] CRASH DETECTED: Bot telah berhenti berjalan!
 echo ===================================================
-echo Silakan buka file "error_log.txt" di folder ini untuk melihat 
-echo pesan kerusakannya secara detail.
+echo Berikut adalah rincian error dari sistem Node.js:
+echo ---------------------------------------------------
+type error_log.txt
+echo ---------------------------------------------------
 echo.
+echo Silakan copy-paste tulisan error di atas dan kirimkan kepadaku 
+echo agar kita bisa memperbaikinya bersama!
 pause
