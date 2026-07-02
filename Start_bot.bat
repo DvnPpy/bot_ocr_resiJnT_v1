@@ -1,88 +1,87 @@
 @echo off
-setlocal EnableDelayedExpansion
-title Bot Resi J&T Offline - Port 31912
+title Bot Resi J^&T Offline - Port 31912
 cd /d "%~dp0"
 color 0A
 
+echo ===================================================
+echo  SISTEM RUNNER ^& AUTO-UPDATE BOT RESI J^&T
+echo ===================================================
 echo.
-echo  =====================================================
-echo   BOT RESI J^&T OFFLINE - RUNNER v4.0
-echo  =====================================================
-echo.
 
-:: Paksa pakai Node v22 jika ada
-if exist "C:\Program Files\nodejs\node.exe" (
-    set "PATH=C:\Program Files\nodejs;%PATH%"
-)
-
-:: Verifikasi node tersedia
-node -v >nul 2>&1
-if %errorlevel% neq 0 (
-    color 0C
-    echo  [X] Node.js tidak ditemukan!
-    echo  [>] Jalankan Setup_bot_atau_Install.bat terlebih dahulu.
-    pause & exit /b
-)
-
-for /f "tokens=*" %%v in ('node -e "process.stdout.write(process.version)"') do set NODEVER=%%v
-echo  [i] Menggunakan Node.js !NODEVER!
-
-:: ── CEK node_modules ──────────────────────────────────
+:: 1. Proteksi Awal: Cek Mesin NPM
 if not exist "node_modules\" (
     color 0C
-    echo  [X] Folder node_modules tidak ditemukan!
-    echo  [>] Jalankan Setup_bot_atau_Install.bat terlebih dahulu.
-    pause & exit /b
+    echo [X] ERROR: Folder modul sistem tidak ditemukan!
+    echo Silakan jalankan "Install_Semua_Mesin.bat" terlebih dahulu.
+    echo.
+    pause
+    exit /b
 )
 
-:: ── CEK MODUL KRITIS, INSTALL JIKA KURANG ─────────────
-set MISSING=0
-for %%m in (dotenv express socket.io multer sharp exceljs) do (
-    if not exist "node_modules\%%m\" (
-        echo  [!] Modul "%%m" tidak ditemukan.
-        set MISSING=1
-    )
-)
-if !MISSING! equ 1 (
-    echo  [>] Menginstal modul yang kurang...
-    npm install
+:: 2. Proteksi Kedua: Cek Kunci API OCR
+if not exist ".env" (
+    color 0E
+    echo [!] PERINGATAN: File .env tidak ditemukan!
+    echo Mesin Engine 2 tidak akan bisa digunakan tanpa API Key.
+    echo Pastikan file .env sudah diekstrak dari env_secure.zip.
     echo.
 )
 
-:: ── AUTO-UPDATE DARI GITHUB ────────────────────────────
-echo  [>] Memeriksa pembaruan di GitHub...
+:: 3. Fitur Auto-Update Otomatis dari GitHub
+echo [^>] Memeriksa pembaruan sistem di GitHub...
+
+:: Memastikan link repositori sudah terpasang
+git remote add origin https://github.com/DvnPpy/bot_ocr_resiJnT_v1.git >nul 2>&1
 git fetch origin main >nul 2>&1
 
-if %errorlevel% equ 0 (
-    for /f "tokens=*" %%g in ('git rev-list HEAD...origin/main --count 2^>nul') do set UPD=%%g
-    if "!UPD!"=="" set UPD=0
-    if !UPD! gtr 0 (
-        color 0E
-        echo  [UPDATE] !UPD! pembaruan baru ditemukan! Mengunduh...
-        git reset --hard origin/main >nul 2>&1
-        color 0A
-        echo  [V] Bot diperbarui ke versi terbaru!
-    ) else (
-        echo  [V] Bot sudah versi terbaru.
-    )
-) else (
-    echo  [!] Tidak bisa cek GitHub. Pakai versi lokal.
+if %errorlevel% neq 0 (
+    echo [!] Gagal terhubung ke GitHub (Mungkin komputer sedang Offline).
+    echo [^>] Melanjutkan menjalankan bot dengan versi lokal yang tersedia...
+    goto :start_bot
 )
 
-:: ── JALANKAN BOT ──────────────────────────────────────
+:: Hitung jumlah pembaruan (commit) yang tertinggal
+set count=0
+FOR /F "tokens=*" %%g IN ('git rev-list HEAD...origin/main --count 2^>nul') DO SET count=%%g
+
+if %count% gtr 0 (
+    color 0E
+    echo.
+    echo ===================================================
+    echo [UPDATE] Ditemukan %count% pembaruan baru di GitHub!
+    echo [^>] Mengunduh dan menyinkronkan data bot...
+    echo ===================================================
+    
+    :: Tarik data terbaru (Aman, tidak akan menghapus .env karena sudah di-gitignore)
+    git reset --hard origin/main >nul 2>&1
+    
+    :: Pastikan jika ada penambahan modul baru di pembaruan, ikut diinstal
+    echo [^>] Memeriksa pembaruan modul NPM...
+    call npm install >nul 2>&1
+    
+    color 0A
+    echo.
+    echo [V] Berhasil memperbarui data ke versi terbaru!
+    echo ===================================================
+) else (
+    echo [V] Sistem bot sudah menggunakan versi paling mutakhir.
+)
+
+:start_bot
+color 0A
 echo.
-echo  [>] Membuka dashboard di browser...
-timeout /t 2 /nobreak >nul
+echo [^>] Membuka Dashboard Web secara otomatis...
 start http://localhost:31912
 
-echo  [>] Bot berjalan di http://localhost:31912
-echo  [i] Tekan CTRL+C untuk menghentikan.
-echo  [i] Log error disimpan di error_log.txt
+echo [^>] Memulai sistem Node.js di http://localhost:31912 ...
+echo [i] Biarkan jendela hitam ini tetap terbuka selama bot bekerja.
 echo.
-echo  ─────────────────────────────────────────────────
+
+:: Menjalankan core bot utama dan menangkap pesan error (crash) ke file teks
 node index.js 2>> error_log.txt
 
+color 0C
 echo.
-echo  ─────────────────────────────────────────────────
-echo  [!] Bot berhenti. Cek error_log.txt jika ada crash.
+echo [!] Bot telah berhenti berjalan secara tiba-tiba (Crash).
+echo [i] Silakan buka file "error_log.txt" di dalam folder ini untuk melihat detail kerusakannya.
 pause
