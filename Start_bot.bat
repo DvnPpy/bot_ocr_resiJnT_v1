@@ -23,49 +23,30 @@ if not exist ".env" (
     color 0E
     echo [!] PERINGATAN: File .env tidak ditemukan!
     echo Mesin Engine 2 tidak akan bisa digunakan tanpa API Key.
-    echo Pastikan file .env sudah diekstrak dari env_secure.zip.
+    echo Pastikan file .env sudah diekstrak dari brankas zip.
     echo.
 )
 
-:: 3. Fitur Auto-Update Otomatis dari GitHub
+:: 3. Fitur Auto-Update Tangguh (Anti-Crash)
 echo [^>] Memeriksa pembaruan sistem di GitHub...
 
-:: Memastikan link repositori sudah terpasang
+:: Sambungkan ke repositori
 git remote add origin https://github.com/DvnPpy/bot_ocr_resiJnT_v1.git >nul 2>&1
 git fetch origin main >nul 2>&1
 
 if %errorlevel% neq 0 (
-    echo [!] Gagal terhubung ke GitHub (Mungkin komputer sedang Offline).
-    echo [^>] Melanjutkan menjalankan bot dengan versi lokal yang tersedia...
+    echo [!] Gagal terhubung ke GitHub (Mungkin sedang offline atau kuota habis).
+    echo [^>] Melanjutkan dengan versi mesin lokal...
     goto :start_bot
 )
 
-:: Hitung jumlah pembaruan (commit) yang tertinggal
-set count=0
-FOR /F "tokens=*" %%g IN ('git rev-list HEAD...origin/main --count 2^>nul') DO SET count=%%g
+:: Langsung tarik dan ratakan data dengan GitHub (Lebih aman daripada menghitung versi)
+echo [^>] Menyinkronkan data terbaru...
+git reset --hard origin/main >nul 2>&1
 
-if %count% gtr 0 (
-    color 0E
-    echo.
-    echo ===================================================
-    echo [UPDATE] Ditemukan %count% pembaruan baru di GitHub!
-    echo [^>] Mengunduh dan menyinkronkan data bot...
-    echo ===================================================
-    
-    :: Tarik data terbaru (Aman, tidak akan menghapus .env karena sudah di-gitignore)
-    git reset --hard origin/main >nul 2>&1
-    
-    :: Pastikan jika ada penambahan modul baru di pembaruan, ikut diinstal
-    echo [^>] Memeriksa pembaruan modul NPM...
-    call npm install >nul 2>&1
-    
-    color 0A
-    echo.
-    echo [V] Berhasil memperbarui data ke versi terbaru!
-    echo ===================================================
-) else (
-    echo [V] Sistem bot sudah menggunakan versi paling mutakhir.
-)
+:: Pastikan modul NPM baru ikut terinstal secara diam-diam
+call npm install >nul 2>&1
+echo [V] Mesin bot dipastikan menggunakan versi paling mutakhir!
 
 :start_bot
 color 0A
@@ -77,11 +58,11 @@ echo [^>] Memulai sistem Node.js di http://localhost:31912 ...
 echo [i] Biarkan jendela hitam ini tetap terbuka selama bot bekerja.
 echo.
 
-:: Menjalankan core bot utama dan menangkap pesan error (crash) ke file teks
-node index.js 2>> error_log.txt
+:: Menjalankan core bot utama (Log akan tampil di layar)
+node index.js
 
 color 0C
 echo.
 echo [!] Bot telah berhenti berjalan secara tiba-tiba (Crash).
-echo [i] Silakan buka file "error_log.txt" di dalam folder ini untuk melihat detail kerusakannya.
+echo [i] Cek log pesan error berwarna merah di atas untuk mengetahui penyebabnya.
 pause
