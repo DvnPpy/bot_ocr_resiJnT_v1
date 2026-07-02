@@ -1,3 +1,5 @@
+require('dotenv').config(); // <--- WAJIB DI BARIS PALING ATAS UNTUK MEMBACA KUNCI .ENV
+
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
@@ -12,7 +14,7 @@ const chokidar = require('chokidar');
 // Import Ketiga Engine OCR
 const { extractResiOffline } = require('./ocrEngine');
 const { extractResiOcrSpace } = require('./ocrEngine2');
-const { extractResiEngine3 } = require('./ocrEngine3'); // <-- ENGINE 3 DITAMBAHKAN
+const { extractResiEngine3 } = require('./ocrEngine3'); 
 
 const app = express();
 const httpServer = createServer(app);
@@ -120,7 +122,6 @@ const processQueue = async () => {
         writeLog('info', `⚙️ Proses [Engine ${SELECTED_ENGINE}]: ${task.originalName}...`);
         
         let result;
-        // LOGIKA ROUTING 3 ENGINE
         if (SELECTED_ENGINE === 1) {
             result = await extractResiOffline(task.path);
         } else if (SELECTED_ENGINE === 2) {
@@ -247,7 +248,7 @@ app.get('/api/export', async (req, res) => {
     allData.forEach(data => {
         sheet.addRow(data);
         count++;
-        if (count % 900 === 0) sheet.addRow({}); // Jeda per 900 baris
+        if (count % 900 === 0) sheet.addRow({}); // Jeda otomatis per 900 baris
     });
     
     await workbook.xlsx.writeFile(path.join(EXPORT_DIR, filename));
