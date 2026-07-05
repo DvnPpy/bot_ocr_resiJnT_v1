@@ -136,9 +136,16 @@ const processQueue = async () => {
             await Promise.all(result.resis.map(async (resi) => {
                 const targetPath = path.join(dailyFolder, `${resi}.jpg`);
                 if (fs.existsSync(task.path)) {
-                    const fileSizeMB = fs.statSync(task.path).size / (1024 * 1024);
-                    if (fileSizeMB > 2) await sharp(task.path).jpeg({ quality: 85 }).toFile(targetPath);
-                    else fs.copyFileSync(task.path, targetPath);
+                    // Update kompresi: Max 500KB, resize 1200px, mozjpeg
+                    const fileSizeBytes = fs.statSync(task.path).size;
+                    if (fileSizeBytes > 500 * 1024) { 
+                        await sharp(task.path)
+                            .resize({ width: 1200, withoutEnlargement: true })
+                            .jpeg({ quality: 80, mozjpeg: true })
+                            .toFile(targetPath);
+                    } else {
+                        fs.copyFileSync(task.path, targetPath);
+                    }
                 }
                 insertResi.run(task.originalName, resi, result.scenario);
             }));
@@ -216,9 +223,18 @@ app.post('/api/override', async (req, res) => {
     const dailyFolder = getDailyFolder();
     await Promise.all(resiArray.map(async (resi) => {
         const targetPath = path.join(dailyFolder, `${resi}.jpg`);
-        const fileSizeMB = fs.statSync(sourcePath).size / (1024 * 1024);
-        if (fileSizeMB > 2) await sharp(sourcePath).jpeg({ quality: 85 }).toFile(targetPath);
-        else fs.copyFileSync(sourcePath, targetPath);
+        
+        // Update kompresi untuk manual override
+        const fileSizeBytes = fs.statSync(sourcePath).size;
+        if (fileSizeBytes > 500 * 1024) { 
+            await sharp(sourcePath)
+                .resize({ width: 1200, withoutEnlargement: true })
+                .jpeg({ quality: 80, mozjpeg: true })
+                .toFile(targetPath);
+        } else {
+            fs.copyFileSync(sourcePath, targetPath);
+        }
+        
         insertResi.run(filename, resi, 'Manual Override');
     }));
     insertSession.run(filename);
