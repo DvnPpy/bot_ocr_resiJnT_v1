@@ -172,7 +172,7 @@
         }
 
         socket.on('log', data => {
-            logBox.innerHTML += `<div class="${data.type}">[${new Date().toLocaleTimeString()}] ${data.msg}</div>`;
+            logBox.insertAdjacentHTML('beforeend', `<div class="${data.type}">[${new Date().toLocaleTimeString()}] ${data.msg}</div>`);
             logBox.scrollTop = logBox.scrollHeight;
         });
 
@@ -199,8 +199,8 @@
             const id = 'fail_' + data.filename.replace(/[^a-zA-Z0-9]/g, '');
             if(document.getElementById(id)) return; 
 
-            // MENAMBAHKAN TOMBOL HAPUS DI SINI
-            list.innerHTML += `
+            // Simpan HTML ke dalam variabel string
+            const htmlString = `
                 <div class="failed-item" id="${id}">
                     <a href="/gagal/${data.filename}" target="_blank"><img src="/gagal/${data.filename}"></a>
                     <div style="flex:1;">
@@ -213,6 +213,11 @@
                         </div>
                     </div>
                 </div>`;
+            
+            // Perbaikan: Gunakan insertAdjacentHTML
+            // 'beforeend' akan memunculkan item baru di urutan paling bawah (Lama ke Baru).
+            // Jika nanti kamu ingin item terbaru muncul di bagian atas, cukup ganti kata 'beforeend' menjadi 'afterbegin'.
+            list.insertAdjacentHTML('beforeend', htmlString);
         });
 
         async function uploadFiles() {
@@ -245,24 +250,21 @@
             });
         }
 
-        // FUNGSI BARU UNTUK MENGHAPUS FOTO SECARA SPESIFIK
         async function deleteFailed(filename, elementId) {
             if (!confirm(`Apakah kamu yakin ingin menghapus foto ${filename} dari daftar gagal?`)) {
-                return; // Batalkan jika user tidak jadi menghapus
+                return;
             }
 
             try {
                 const res = await fetch('/api/delete-failed', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    // Kita kirimkan array berisi 1 file karena backend menerima format array
                     body: JSON.stringify({ filenames: [filename] }) 
                 });
 
                 const data = await res.json();
                 
                 if (data.ok) {
-                    // Jika berhasil dihapus di backend, hilangkan dari layar (UI)
                     document.getElementById(elementId).remove();
                 } else {
                     alert('Error: ' + data.error);
