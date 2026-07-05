@@ -111,11 +111,9 @@ const updateDashboard = () => {
 
 // Fungsi Pemotong Resi (Mencegah Kelebihan Angka)
 const formatResiLength = (resi) => {
-    // Jika awalan JX/JO/JD/JZ dan lebih dari 12 karakter, potong jadi 12
     if (/^(JX|JO|JD|JZ)\d+$/.test(resi) && resi.length > 12) {
         return resi.substring(0, 12);
     } 
-    // Jika hanya angka murni dan lebih dari 10 karakter, potong jadi 10
     else if (/^\d+$/.test(resi) && resi.length > 10) {
         return resi.substring(0, 10);
     }
@@ -146,13 +144,11 @@ const processQueue = async () => {
         const dailyFolder = getDailyFolder();
 
         if (result.success) {
-            // Terapkan fungsi pemotong resi dan hapus duplikat jika ada resi yang sama setelah dipotong
             const finalResis = [...new Set(result.resis.map(formatResiLength))];
 
             await Promise.all(finalResis.map(async (resi) => {
                 const targetPath = path.join(dailyFolder, `${resi}.jpg`);
                 if (fs.existsSync(task.path)) {
-                    // Sistem Kompresi: Max 500KB, resize 1200px, mozjpeg
                     const fileSizeBytes = fs.statSync(task.path).size;
                     if (fileSizeBytes > 500 * 1024) { 
                         await sharp(task.path)
@@ -217,6 +213,31 @@ app.post('/api/reset-stats', (req, res) => {
     res.json({ ok: true, msg: 'Statistik Sukses & Gagal dihapus!' });
 });
 
+// FEATURE BARU: Menghapus beberapa file gagal pilihan secara massal (Bulk Delete)
+app.post('/api/delete-failed', (req, res) => {
+    const { filenames } = req.body; // Menerima data array nama file, misal: ["A.jpg", "B.jpg"]
+    if (!filenames || !Array.isArray(filenames)) {
+        return res.status(400).json({ error: 'Format data harus berupa array dari nama file!' });
+    }
+
+    let deletedCount = 0;
+    filenames.forEach(filename => {
+        const filePath = path.join(GAGAL_DIR, filename);
+        if (fs.existsSync(filePath)) {
+            try {
+                fs.unlinkSync(filePath);
+                deletedCount++;
+                writeLog('warn', `🗑️ Hapus File Gagal (Manual): ${filename}`);
+            } catch (e) {
+                writeLog('error', `🚨 Gagal menghapus file ${filename}: ${e.message}`);
+            }
+        }
+    });
+
+    updateDashboard();
+    res.json({ ok: true, msg: `${deletedCount} file gagal berhasil dihapus!` });
+});
+
 app.post('/api/retry', (req, res) => {
     const { filename } = req.body;
     const sourcePath = path.join(GAGAL_DIR, filename);
@@ -232,7 +253,6 @@ app.post('/api/retry', (req, res) => {
 
 app.post('/api/override', async (req, res) => {
     const { filename, resiString } = req.body;
-    // Terapkan fungsi pemotong resi juga pada inputan manual
     const resiArrayRaw = resiString.split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
     const resiArray = [...new Set(resiArrayRaw.map(formatResiLength))];
 
@@ -243,7 +263,6 @@ app.post('/api/override', async (req, res) => {
     await Promise.all(resiArray.map(async (resi) => {
         const targetPath = path.join(dailyFolder, `${resi}.jpg`);
         
-        // Kompresi untuk manual override
         const fileSizeBytes = fs.statSync(sourcePath).size;
         if (fileSizeBytes > 500 * 1024) { 
             await sharp(sourcePath)
@@ -283,7 +302,7 @@ app.get('/api/export', async (req, res) => {
     allData.forEach(data => {
         sheet.addRow(data);
         count++;
-        if (count % 900 === 0) sheet.addRow({}); // Jeda otomatis per 900 baris
+        if (count % 900 === 0) sheet.addRow({}); 
     });
     
     await workbook.xlsx.writeFile(path.join(EXPORT_DIR, filename));
