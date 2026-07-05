@@ -71,6 +71,27 @@ let activeTask = 0;
 let MAX_CONCURRENT = 3; 
 let SELECTED_ENGINE = 1;
 
+// FITUR BARU: Mengunci bot agar tidak memproses apapun sebelum setup diselesaikan
+let isSetupComplete = false; 
+
+// Recovery File saat Crash (Membaca file yg tersisa di folder UPLOAD manual)
+const recoverTempFiles = () => {
+    const files = fs.readdirSync(UPLOAD_DIR);
+    files.forEach(file => {
+        const filePath = path.join(UPLOAD_DIR, file);
+        if (fs.lstatSync(filePath).isFile() && /\.(jpg|jpeg|png)$/i.test(file)) {
+            if (!checkSession.get(file)) {
+                queue.push({ path: filePath, originalName: file });
+                writeLog('info', `🔄 Menyelamatkan file tertunda: ${file}`);
+            } else {
+                try { fs.unlinkSync(filePath); } catch(e) {}
+            }
+        }
+    });
+};
+recoverTempFiles();
+
+// Chokidar otomatis akan mendeteksi file yang tersisa di DROP_ZONE saat baru menyala
 chokidar.watch(DROP_ZONE, {
     ignored: /(^|[\/\\])\../,
     persistent: true,
@@ -83,8 +104,13 @@ chokidar.watch(DROP_ZONE, {
         try { fs.unlinkSync(filePath); } catch(e) {}
         return;
     }
+    
     queue.push({ path: filePath, originalName: filename });
-    for (let i = activeTask; i < MAX_CONCURRENT; i++) processQueue();
+    
+    // Hanya picu proses jika user SUDAH menyelesaikan setup di dashboard
+    if (isSetupComplete) {
+        for (let i = activeTask; i < MAX_CONCURRENT; i++) processQueue();
+    }
     updateDashboard();
 });
 
@@ -109,22 +135,24 @@ const updateDashboard = () => {
     });
 };
 
-// Fungsi Pemotong Resi (Mencegah Kelebihan Angka)
 const formatResiLength = (resi) => {
-    if (/^(JX|JO|JD|JZ)\d+$/.test(resi) && resi.length > 12) {
-        return resi.substring(0, 12);
-    } 
-    else if (/^\d+$/.test(resi) && resi.length > 10) {
-        return resi.substring(0, 10);
-    }
+    if (/^(JX|JO|JD|JZ)\d+$/.test(resi) && resi.length > 12) return resi.substring(0, 12);
+    else if (/^\d+$/.test(resi) && resi.length > 10) return resi.substring(0, 10);
     return resi;
 };
 
 const processQueue = async () => {
+    // Kunci: Jangan lakukan proses apapun jika user belum set-up!
+    if (!isSetupComplete) {
+        updateDashboard();
+        return;
+    }
+    
     if (activeTask >= MAX_CONCURRENT || queue.length === 0) {
         updateDashboard();
         return;
     }
+    
     activeTask++;
     const task = queue.shift();
     updateDashboard();
@@ -133,13 +161,9 @@ const processQueue = async () => {
         writeLog('info', `⚙️ Proses [Engine ${SELECTED_ENGINE}]: ${task.originalName}...`);
         
         let result;
-        if (SELECTED_ENGINE === 1) {
-            result = await extractResiOffline(task.path);
-        } else if (SELECTED_ENGINE === 2) {
-            result = await extractResiOcrSpace(task.path);
-        } else if (SELECTED_ENGINE === 3) {
-            result = await extractResiEngine3(task.path);
-        }
+        if (SELECTED_ENGINE === 1) result = await extractResiOffline(task.path);
+        else if (SELECTED_ENGINE === 2) result = await extractResiOcrSpace(task.path);
+        else if (SELECTED_ENGINE === 3) result = await extractResiEngine3(task.path);
 
         const dailyFolder = getDailyFolder();
 
@@ -177,14 +201,23 @@ const processQueue = async () => {
         writeLog('error', `🚨 Error Sistem: ${task.originalName} - ${err.message}`);
     } finally {
         activeTask--;
-        processQueue();
+        processQueue(); // Lanjut ke antrean berikutnya
     }
 };
 
 app.post('/api/set-setup', (req, res) => {
     SELECTED_ENGINE = req.body.engine || 1;
     MAX_CONCURRENT = SELECTED_ENGINE === 2 ? 1 : (req.body.max || 10);
-    writeLog('info', `[SISTEM] Bot diaktifkan dengan Engine ${SELECTED_ENGINE} | Max Proses: ${MAX_CONCURRENT}`);
+    
+    // Buka kunci sistem
+    isSetupComplete = true; 
+    writeLog('info', `[SISTEM] Bot Dinyalakan. Engine ${SELECTED_ENGINE} | Max Proses: ${MAX_CONCURRENT}`);
+    
+    // Picu proses untuk antrean yang tertahan selama bot dimatikan / crash
+    for (let i = activeTask; i < MAX_CONCURRENT; i++) {
+        processQueue();
+    }
+    
     res.json({ ok: true });
 });
 
@@ -213,9 +246,8 @@ app.post('/api/reset-stats', (req, res) => {
     res.json({ ok: true, msg: 'Statistik Sukses & Gagal dihapus!' });
 });
 
-// FEATURE BARU: Menghapus beberapa file gagal pilihan secara massal (Bulk Delete)
 app.post('/api/delete-failed', (req, res) => {
-    const { filenames } = req.body; // Menerima data array nama file, misal: ["A.jpg", "B.jpg"]
+    const { filenames } = req.body; 
     if (!filenames || !Array.isArray(filenames)) {
         return res.status(400).json({ error: 'Format data harus berupa array dari nama file!' });
     }
@@ -246,7 +278,7 @@ app.post('/api/retry', (req, res) => {
         fs.renameSync(sourcePath, tempPath);
         queue.push({ path: tempPath, originalName: filename });
         writeLog('warn', `🔄 Mencoba ulang: ${filename}`);
-        processQueue();
+        if (isSetupComplete) processQueue();
     }
     res.json({ ok: true });
 });
@@ -316,13 +348,17 @@ app.post('/api/upload', upload.array('photos'), (req, res) => {
         if (checkSession.get(file.originalname)) {
             writeLog('warn', `⚠️ Abaikan duplikat via Web: ${file.originalname}`);
             if (fs.existsSync(file.path)) fs.unlinkSync(file.path); 
-        } else queue.push({ path: file.path, originalName: file.originalname });
+        } else {
+            queue.push({ path: file.path, originalName: file.originalname });
+        }
     });
-    for (let i = activeTask; i < MAX_CONCURRENT; i++) processQueue();
+    if (isSetupComplete) {
+        for (let i = activeTask; i < MAX_CONCURRENT; i++) processQueue();
+    }
     res.json({ ok: true });
 });
 
 httpServer.listen(31912, () => {
     console.log('🚀 Server Aktif di http://localhost:31912');
-    writeLog('info', '[SISTEM] Server Bot Dinyalakan.');
+    writeLog('info', '[SISTEM] Server siap. Menunggu kamu memilih Engine OCR di Website...');
 });
