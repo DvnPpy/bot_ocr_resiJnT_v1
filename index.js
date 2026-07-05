@@ -109,6 +109,19 @@ const updateDashboard = () => {
     });
 };
 
+// Fungsi Pemotong Resi (Mencegah Kelebihan Angka)
+const formatResiLength = (resi) => {
+    // Jika awalan JX/JO/JD/JZ dan lebih dari 12 karakter, potong jadi 12
+    if (/^(JX|JO|JD|JZ)\d+$/.test(resi) && resi.length > 12) {
+        return resi.substring(0, 12);
+    } 
+    // Jika hanya angka murni dan lebih dari 10 karakter, potong jadi 10
+    else if (/^\d+$/.test(resi) && resi.length > 10) {
+        return resi.substring(0, 10);
+    }
+    return resi;
+};
+
 const processQueue = async () => {
     if (activeTask >= MAX_CONCURRENT || queue.length === 0) {
         updateDashboard();
@@ -133,10 +146,13 @@ const processQueue = async () => {
         const dailyFolder = getDailyFolder();
 
         if (result.success) {
-            await Promise.all(result.resis.map(async (resi) => {
+            // Terapkan fungsi pemotong resi dan hapus duplikat jika ada resi yang sama setelah dipotong
+            const finalResis = [...new Set(result.resis.map(formatResiLength))];
+
+            await Promise.all(finalResis.map(async (resi) => {
                 const targetPath = path.join(dailyFolder, `${resi}.jpg`);
                 if (fs.existsSync(task.path)) {
-                    // Update kompresi: Max 500KB, resize 1200px, mozjpeg
+                    // Sistem Kompresi: Max 500KB, resize 1200px, mozjpeg
                     const fileSizeBytes = fs.statSync(task.path).size;
                     if (fileSizeBytes > 500 * 1024) { 
                         await sharp(task.path)
@@ -151,7 +167,7 @@ const processQueue = async () => {
             }));
             
             insertSession.run(task.originalName);
-            writeLog('success', `✅ Sukses: ${task.originalName} -> ${result.resis.join(', ')}`);
+            writeLog('success', `✅ Sukses: ${task.originalName} -> ${finalResis.join(', ')}`);
             if (fs.existsSync(task.path)) fs.unlinkSync(task.path); 
         } else {
             if (fs.existsSync(task.path)) {
@@ -216,7 +232,10 @@ app.post('/api/retry', (req, res) => {
 
 app.post('/api/override', async (req, res) => {
     const { filename, resiString } = req.body;
-    const resiArray = resiString.split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
+    // Terapkan fungsi pemotong resi juga pada inputan manual
+    const resiArrayRaw = resiString.split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
+    const resiArray = [...new Set(resiArrayRaw.map(formatResiLength))];
+
     const sourcePath = path.join(GAGAL_DIR, filename);
     if (!fs.existsSync(sourcePath)) return res.status(404).json({ error: 'File tidak ditemukan' });
 
@@ -224,7 +243,7 @@ app.post('/api/override', async (req, res) => {
     await Promise.all(resiArray.map(async (resi) => {
         const targetPath = path.join(dailyFolder, `${resi}.jpg`);
         
-        // Update kompresi untuk manual override
+        // Kompresi untuk manual override
         const fileSizeBytes = fs.statSync(sourcePath).size;
         if (fileSizeBytes > 500 * 1024) { 
             await sharp(sourcePath)
