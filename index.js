@@ -135,9 +135,15 @@ const updateDashboard = () => {
     });
 };
 
+// Fungsi Pemotong Resi (Mencegah Kelebihan Angka & Mendukung Semua Awalan J&T)
 const formatResiLength = (resi) => {
-    if (/^(JX|JO|JD|JZ)\d+$/.test(resi) && resi.length > 12) return resi.substring(0, 12);
-    else if (/^\d+$/.test(resi) && resi.length > 10) return resi.substring(0, 10);
+    // Deteksi awalan J diikuti 1 huruf apa saja (JX, JP, JD, JB, dll)
+    if (/^J[A-Z]\d+$/.test(resi) && resi.length > 12) {
+        return resi.substring(0, 12);
+    } 
+    else if (/^\d+$/.test(resi) && resi.length > 10) {
+        return resi.substring(0, 10);
+    }
     return resi;
 };
 
