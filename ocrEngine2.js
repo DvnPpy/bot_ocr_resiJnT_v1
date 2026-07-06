@@ -68,7 +68,7 @@ const extractResiOcrSpace = async (imagePath) => {
             const parsedText = json.ParsedResults[0].ParsedText || '';
             const cleanText = parsedText.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
             
-            const RESI_REGEX = /(J[XODZ]|13)([0-9]+)/g;
+            const RESI_REGEX = /(J[A-Z]|13)([0-9]+)/g;
             let match;
             
             while ((match = RESI_REGEX.exec(cleanText)) !== null) {
