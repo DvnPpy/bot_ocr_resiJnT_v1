@@ -66,7 +66,7 @@ const extractResiOffline = async (imagePath) => {
                 });
 
                 const cleanText = text.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-                const RESI_REGEX = /(J[XODZ]|13)([0-9OQDCUILZASGTB]+)/g;
+                const RESI_REGEX = /(J[A-Z]|13)([0-9OQDCUILZASGTB]+)/g;
 
                 let match;
                 while ((match = RESI_REGEX.exec(cleanText)) !== null) {
