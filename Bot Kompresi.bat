@@ -5,7 +5,7 @@ setlocal enabledelayedexpansion
 set MAX_SIZE=409600
 
 echo ==================================================
-echo    Program Kompresi ^& Konversi Paksa ke JPG
+echo    Program Kompresi ^& Konversi Seragam ke .JPG
 echo ==================================================
 echo.
 
@@ -39,15 +39,14 @@ if %errorlevel% neq 0 (
 echo.
 
 :: 2. PROSES KONVERSI DAN KOMPRESI FOTO
-:: Memproses berbagai format gambar umum (jpg, jpeg, png, heic, webp, bmp)
+:: Memproses berbagai format gambar umum (termasuk .jpeg)
 for %%F in (*.jpg *.jpeg *.png *.heic *.webp *.bmp) do (
-    :: Cek apakah file sudah berbentuk JPG/JPEG
-    set "is_jpg=0"
-    if /I "%%~xF"==".jpg" set "is_jpg=1"
-    if /I "%%~xF"==".jpeg" set "is_jpg=1"
+    :: Mengecek apakah file sudah memiliki ekstensi .jpg yang presisi
+    set "is_exact_jpg=0"
+    if /I "%%~xF"==".jpg" set "is_exact_jpg=1"
     
-    if "!is_jpg!"=="1" (
-        :: JIKA SUDAH JPG: Cek ukuran file
+    if "!is_exact_jpg!"=="1" (
+        :: JIKA SUDAH .JPG: Cukup cek ukuran dan kompresi jika perlu
         if %%~zF GTR %MAX_SIZE% (
             echo [PROSES] Mengompresi JPG: "%%F" ^(Ukuran asli: %%~zF bytes^)
             magick "%%F" -strip -define jpeg:extent=400kb "%%F"
@@ -56,13 +55,13 @@ for %%F in (*.jpg *.jpeg *.png *.heic *.webp *.bmp) do (
             echo [LEWATI] "%%F" ^(JPG sudah di bawah 400KB^)
         )
     ) else (
-        :: JIKA BUKAN JPG: Lakukan konversi paksa dan kompresi
-        echo [KONVERSI] Mengubah format "%%F" menjadi JPG...
+        :: JIKA BUKAN .JPG (TERMASUK .JPEG): Konversi ke .jpg dan kompresi
+        echo [KONVERSI] Mengubah format "%%F" menjadi .jpg...
         
         :: Output dipaksa menjadi .jpg dengan ukuran maksimal 400kb
         magick "%%F" -strip -define jpeg:extent=400kb "%%~nF.jpg"
         
-        :: Menghapus file format lama jika file JPG berhasil dibuat
+        :: Menghapus file format lama (termasuk .jpeg) jika file .jpg berhasil dibuat
         if exist "%%~nF.jpg" (
             del "%%F"
             echo [SUKSES] Berhasil dikonversi menjadi "%%~nF.jpg" dan file asli dihapus.
