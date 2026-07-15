@@ -46,12 +46,12 @@ for %%F in (*.jpg *.jpeg *.png *.heic *.webp *.bmp) do (
     )
 )
 
-:: Jeda 5 detik sebelum scan folder lagi
+:: Jeda sebelum scan folder lagi
 timeout /t %CHECK_INTERVAL% >nul
 goto MainLoop
 
 :: ==========================================
-:: FUNGSI MENJALANKAN PROSES (ASINKRON / PARALEL)
+:: FUNGSI MENJALANKAN PROSES (PARALEL AMAN)
 :: ==========================================
 :LaunchProcess
 set "file=%~1"
@@ -59,12 +59,12 @@ set "mode=%~2"
 
 if "%mode%"=="jpg" (
     echo [MULAI] Paralel -> Mengompresi: "%file%"
-    :: Menjalankan kompresi dan animasi di latar belakang (TIDAK MEMBLOKIR)
+    :: Menjalankan proses latar belakang secara aman menggunakan call
     start /b "" cmd /c "magick -limit thread 1 "%file%" -strip -define jpeg:extent=400kb "%file%" >nul 2>&1 && echo [SELESAI] Sukses Kompres: "%file%""
 ) else (
     echo [MULAI] Paralel -> Konversi ^& Kompresi: "%file%"
-    :: Menjalankan konversi, hapus file lama, dan animasi di latar belakang
-    start /b "" cmd /c "magick -limit thread 1 "%file%" -strip -define jpeg:extent=400kb "%~n1.jpg" >nul 2>&1 && (del "%file%" & echo [SELESAI] Sukses Ubah: "%~n1.jpg")"
+    :: Menggunakan sintaks if exist pasca-proses untuk menghindari error rantai ampersand (&)
+    start /b "" cmd /c "magick -limit thread 1 "%file%" -strip -define jpeg:extent=400kb "%~n1.jpg" >nul 2>&1 && echo [SELESAI] Sukses Ubah: "%~n1.jpg" && del "%file%" >nul 2>&1"
 )
 exit /b
 
