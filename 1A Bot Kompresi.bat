@@ -38,35 +38,19 @@ for %%F in (*.jpg *.jpeg *.png *.heic *.webp *.bmp) do (
     if "!is_exact_jpg!"=="1" (
         if %%~zF GTR %MAX_SIZE% (
             call :WaitQueue
-            call :LaunchProcess "%%F" "jpg"
+            echo [MULAI] Paralel -> Mengompresi: "%%F"
+            start /b "" cmd /c "magick -limit thread 1 "%%F" -strip -define jpeg:extent=400kb "%%F" >nul 2>&1 && echo [SELESAI] Sukses Kompres: "%%F""
         )
     ) else (
         call :WaitQueue
-        call :LaunchProcess "%%F" "convert"
+        echo [MULAI] Paralel -> Konversi ^& Kompresi: "%%F"
+        start /b "" cmd /c "magick -limit thread 1 "%%F" -strip -define jpeg:extent=400kb "%%~nF.jpg" >nul 2>&1 && echo [SELESAI] Sukses Ubah: "%%~nF.jpg" && del "%%F" >nul 2>&1"
     )
 )
 
-:: Jeda sebelum scan folder lagi
-timeout /t %CHECK_INTERVAL% >nul
+:: Jeda sebelum scan folder lagi menggunakan cara ping yang 100% aman dari error "unexpected"
+ping 127.0.0.1 -n %CHECK_INTERVAL% -w 1000 >nul 2>&1
 goto MainLoop
-
-:: ==========================================
-:: FUNGSI MENJALANKAN PROSES (PARALEL AMAN)
-:: ==========================================
-:LaunchProcess
-set "file=%~1"
-set "mode=%~2"
-
-if "%mode%"=="jpg" (
-    echo [MULAI] Paralel -> Mengompresi: "%file%"
-    :: Menjalankan proses latar belakang secara aman menggunakan call
-    start /b "" cmd /c "magick -limit thread 1 "%file%" -strip -define jpeg:extent=400kb "%file%" >nul 2>&1 && echo [SELESAI] Sukses Kompres: "%file%""
-) else (
-    echo [MULAI] Paralel -> Konversi ^& Kompresi: "%file%"
-    :: Menggunakan sintaks if exist pasca-proses untuk menghindari error rantai ampersand (&)
-    start /b "" cmd /c "magick -limit thread 1 "%file%" -strip -define jpeg:extent=400kb "%~n1.jpg" >nul 2>&1 && echo [SELESAI] Sukses Ubah: "%~n1.jpg" && del "%file%" >nul 2>&1"
-)
-exit /b
 
 :: ==========================================
 :: FUNGSI PEMBATAS ANTREAN (MAX 10 PROSES)
@@ -76,7 +60,7 @@ for /f %%C in ('tasklist ^| find /c /i "magick.exe" 2^>nul') do set RUNNING=%%C
 if !RUNNING! GEQ %MAX_PROCESSES% (
     echo [BATAS] Slot penuh (%RUNNING%/%MAX_PROCESSES%). Menunggu salah satu selesai...
     :WaitLoop
-    timeout /t 1 >nul 2>&1
+    ping 127.0.0.1 -n 2 -w 1000 >nul 2>&1
     for /f %%C in ('tasklist ^| find /c /i "magick.exe" 2^>nul') do set RUNNING=%%C
     if !RUNNING! GEQ %MAX_PROCESSES% goto :WaitLoop
     echo [SLOT TERSEDIA] Melanjutkan antrean berikutnya...
